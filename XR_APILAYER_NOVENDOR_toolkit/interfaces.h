@@ -45,6 +45,12 @@ namespace toolkit {
 
     } // namespace
 
+    namespace graphics {
+
+        struct ITexture;
+
+    } // namespace graphics
+
     namespace utilities {
 
         // 2 views to process, one per eye.
@@ -53,6 +59,14 @@ namespace toolkit {
 
         // A CPU synchronous timer.
         struct ICpuTimer : public ITimer {};
+
+        // A preview window to display a spectator view or a debug view.
+        struct IPreviewWindow {
+            virtual ~IPreviewWindow() = default;
+
+            virtual std::shared_ptr<graphics::ITexture> getRenderTarget() const = 0;
+            virtual void present() = 0;
+        };
 
     } // namespace utilities
 
@@ -88,6 +102,10 @@ namespace toolkit {
         const std::string SettingContrast = "contrast";
         const std::string SettingSaturation = "saturation";
         const std::string SettingDLSSMode = "dlss_mode";
+        const std::string SettingDeveloper = "developer";
+        const std::string SettingDeveloperPreviewTarget = "preview_target";
+        const std::string SettingDeveloperPreviewEye = "preview_eye";
+        const std::string SettingDeveloperDepthScale = "depth_scale";
 
         enum class OverlayType { None = 0, FPS, Advanced, MaxValue };
         enum class MenuFontSize { Small = 0, Medium, Large, MaxValue };
@@ -99,6 +117,8 @@ namespace toolkit {
         enum class VariableShadingRateQuality { Performance = 0, Quality, MaxValue };
         enum class VariableShadingRatePattern { Wide = 0, Balanced, Narrow, MaxValue };
         enum class MipMapBias { Off = 0, Anisotropic, All, MaxValue };
+
+        enum class PreviewTarget { Color = 0, Depth, MaxValue };
 
         struct IConfigManager {
             virtual ~IConfigManager() = default;
@@ -478,7 +498,7 @@ namespace toolkit {
             virtual void setShaderInput(uint32_t slot, std::shared_ptr<IShaderBuffer> input) = 0;
             virtual void setShaderOutput(uint32_t slot, std::shared_ptr<ITexture> output, int32_t slice = -1) = 0;
 
-            virtual void dispatchShader(bool doNotClear = false) const = 0;
+            virtual void dispatchShader(bool doNotClear = false) = 0;
 
             virtual void unsetRenderTargets() = 0;
             virtual void setRenderTargets(std::vector<std::shared_ptr<ITexture>> renderTargets,

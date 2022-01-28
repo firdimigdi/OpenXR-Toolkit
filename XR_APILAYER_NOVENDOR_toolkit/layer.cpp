@@ -223,6 +223,11 @@ namespace {
                 m_configManager->setDefault(config::SettingSaturation, 500);
                 m_configManager->setEnumDefault(config::SettingDLSSMode, NVSDK_NGX_PerfQuality_Value_Balanced);
 
+                m_configManager->setDefault(config::SettingDeveloper, 0);
+                m_configManager->setEnumDefault(config::SettingDeveloperPreviewTarget, config::PreviewTarget::Color);
+                m_configManager->setDefault(config::SettingDeveloperPreviewEye, 0);
+                m_configManager->setDefault(config::SettingDeveloperDepthScale, 100);
+
                 // Workaround: the first versions of the toolkit used a different representation for the world scale.
                 // Migrate the value upon first run.
                 m_configManager->setDefault("icd", 0);
@@ -519,6 +524,16 @@ namespace {
                             m_superSamplerFactory ? m_superSamplerFactory->hasUltraSettings() : false);
                     }
 
+                    if (m_configManager->getValue(config::SettingDeveloper)) {
+                        m_debugColorProcessor =
+                            graphics::CreateImageProcessor(m_configManager, m_graphicsDevice, "debug_color.hlsl");
+                        m_debugDepthProcessor =
+                            graphics::CreateImageProcessor(m_configManager, m_graphicsDevice, "debug_depth.hlsl");
+
+                        m_previewWindow =
+                            utilities::CreatePreviewWindow(m_applicationName, m_configManager, m_graphicsDevice);
+                    }
+
                     // Create a reference space to calculate projection views.
                     {
                         XrReferenceSpaceCreateInfo referenceSpaceCreateInfo{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
@@ -557,6 +572,9 @@ namespace {
                 if (m_handTracker) {
                     m_handTracker->endSession();
                 }
+                m_previewWindow.reset();
+                m_debugColorProcessor.reset();
+                m_debugDepthProcessor.reset();
                 m_upscaler.reset();
                 m_motionVectorProcessor.reset();
                 m_preProcessor.reset();
@@ -583,8 +601,8 @@ namespace {
                 // eg:
                 // 2022-01-01 17:15:35 -0800: D3D11Device destroyed
                 // 2022-01-01 17:15:35 -0800: Session destroyed
-                // If the order is reversed or the Device is destructed missing, then it means that we are not cleaning
-                // up the resources properly.
+                // If the order is reversed or the Device is destructed missing, then it means that we are not
+                // cleaning up the resources properly.
                 Log("Session destroyed\n");
             }
 
@@ -1507,7 +1525,8 @@ namespace {
                         }
 
                         // Try to retrieve the depth buffer if we are going to need it.
-                        if (!depthBuffer && (m_motionVectorProcessor || m_upscaleMode == config::ScalingType::DLSS)) {
+                        if (!depthBuffer && (m_motionVectorProcessor || m_upscaleMode == config::ScalingType::DLSS ||
+                                             m_configManager->getValue(config::SettingDeveloper))) {
                             depthBuffer = swapchainImages.retrievedDepthBuffer;
                             isDepthInverted = swapchainImages.isRetrievedDepthInverted;
                         }
@@ -1705,9 +1724,37 @@ namespace {
                     }
                 }
 
+                m_graphicsDevice->unsetRenderTargets();
+
                 if (m_menuHandler || m_handTracker) {
                     m_performanceCounters.overlayCpuTimer->stop();
                     m_performanceCounters.overlayGpuTimer[m_performanceCounters.gpuTimerIndex]->stop();
+                }
+
+                if (m_previewWindow) {
+                    auto renderTarget = m_previewWindow->getRenderTarget();
+
+                    if (renderTarget) {
+                        const auto eye = m_configManager->getValue(config::SettingDeveloperPreviewEye);
+
+                        switch (m_configManager->getEnumValue<config::PreviewTarget>(
+                            config::SettingDeveloperPreviewTarget)) {
+                        case config::PreviewTarget::Color:
+                        default:
+                            m_debugColorProcessor->update();
+                            m_debugColorProcessor->process(
+                                textureForOverlay[eye], renderTarget, textureForOverlay[eye]->isArray() ? eye : -1);
+                            break;
+
+                        case config::PreviewTarget::Depth:
+                            if (depthForOverlay[eye]) {
+                                m_debugDepthProcessor->update();
+                                m_debugDepthProcessor->process(
+                                    depthForOverlay[eye], renderTarget, depthForOverlay[eye]->isArray() ? eye : -1);
+                            }
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -1741,6 +1788,10 @@ namespace {
 
             {
                 const auto result = OpenXrApi::xrEndFrame(session, &chainFrameEndInfo);
+
+                if (m_previewWindow) {
+                    m_previewWindow->present();
+                }
 
                 m_graphicsDevice->unblockCallbacks();
 
@@ -1795,9 +1846,13 @@ namespace {
         std::shared_ptr<graphics::IMotionVectorProcessor> m_motionVectorProcessor;
         std::shared_ptr<graphics::IImageProcessor> m_preProcessor;
         std::shared_ptr<graphics::IImageProcessor> m_postProcessor;
+        std::shared_ptr<graphics::IImageProcessor> m_debugColorProcessor;
+        std::shared_ptr<graphics::IImageProcessor> m_debugDepthProcessor;
 
         std::shared_ptr<graphics::IFrameAnalyzer> m_frameAnalyzer;
         std::shared_ptr<graphics::IVariableRateShader> m_variableRateShader;
+
+        std::shared_ptr<utilities::IPreviewWindow> m_previewWindow;
 
         std::shared_ptr<input::IHandTracker> m_handTracker;
 

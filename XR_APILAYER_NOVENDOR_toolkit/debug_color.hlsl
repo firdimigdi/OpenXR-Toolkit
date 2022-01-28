@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright(c) 2021 Matthieu Bucchianeri
+// Copyright(c) 2022 Matthieu Bucchianeri
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this softwareand associated documentation files(the "Software"), to deal
@@ -21,7 +21,7 @@
 // SOFTWARE.
 
 cbuffer config : register(b0) {
-    float4x4 BrightnessContrastSaturationMatrix;
+    float4x4 Unused1;
     float Unused2;
 };
 SamplerState samplerLinearClamp : register(s0);
@@ -34,10 +34,6 @@ Texture2D sourceTexture : register(t0);
 Texture2DArray sourceTexture : register(t0);
 #endif
 
-// For now, our shader only does a copy, effectively allowing Direct3D to convert between color formats.
 float4 main(in float4 position : SV_POSITION, in float2 texcoord : TEXCOORD0) : SV_TARGET {
-    float4 inputColor = SAMPLE_TEXTURE(sourceTexture, texcoord);
-    float4 outputColor = mul(BrightnessContrastSaturationMatrix, inputColor);
-    outputColor.a = inputColor.a;
-    return outputColor;
+    return SAMPLE_TEXTURE(sourceTexture, texcoord);
 }

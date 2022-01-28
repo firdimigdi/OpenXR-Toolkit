@@ -133,6 +133,9 @@
     <ClCompile Include="dlss.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="preview.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="XR_APILAYER_NOVENDOR_toolkit.json" />
@@ -162,6 +165,12 @@
     </FxCompile>
     <FxCompile Include="motionvector.hlsl">
       <Filter>Shader Files</Filter>
+    </FxCompile>
+    <FxCompile Include="debug_color.hlsl">
+      <Filter>Shader Files\PostProcess</Filter>
+    </FxCompile>
+    <FxCompile Include="debug_depth.hlsl">
+      <Filter>Shader Files\PostProcess</Filter>
     </FxCompile>
   </ItemGroup>
 </Project>

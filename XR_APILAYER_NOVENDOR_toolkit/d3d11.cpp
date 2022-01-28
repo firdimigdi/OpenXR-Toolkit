@@ -1144,7 +1144,7 @@ namespace {
         void setShader(std::shared_ptr<IQuadShader> shader) override {
             m_currentQuadShader.reset();
             m_currentComputeShader.reset();
-            m_currentShaderHighestSRV = m_currentShaderHighestUAV = m_currentShaderHighestRTV = 0;
+            m_currentShaderHighestSRV = m_currentShaderHighestUAV = 0;
 
             // Prepare to draw the quad.
             m_context->OMSetBlendState(nullptr, nullptr, 0xffffffff);
@@ -1166,7 +1166,7 @@ namespace {
         void setShader(std::shared_ptr<IComputeShader> shader) override {
             m_currentQuadShader.reset();
             m_currentComputeShader.reset();
-            m_currentShaderHighestSRV = m_currentShaderHighestUAV = m_currentShaderHighestRTV = 0;
+            m_currentShaderHighestSRV = m_currentShaderHighestUAV = 0;
 
             // TODO: This is somewhat restrictive, but for now we only support a linear sampler in slot 0.
             ID3D11SamplerState* samp[] = {get(m_linearClampSamplerCS)};
@@ -1214,8 +1214,6 @@ namespace {
 
                 m_context->RSSetState(output->getInfo().sampleCount > 1 ? get(m_quadRasterizerMSAA)
                                                                         : get(m_quadRasterizer));
-                m_currentShaderHighestRTV = std::max(m_currentShaderHighestRTV, slot);
-
             } else if (m_currentComputeShader) {
                 ID3D11UnorderedAccessView* uavs[] = {
                     slice == -1 ? output->getComputeShaderOutputView()->getNative<D3D11>()
@@ -1227,7 +1225,7 @@ namespace {
             }
         }
 
-        void dispatchShader(bool doNotClear) const override {
+        void dispatchShader(bool doNotClear) override {
             if (m_currentQuadShader) {
                 m_context->Draw(3, 0);
             } else if (m_currentComputeShader) {
@@ -1240,15 +1238,7 @@ namespace {
 
             if (!doNotClear) {
                 // We must unbind all the resources to avoid D3D debug layer issues.
-                {
-                    std::vector<ID3D11RenderTargetView*> rtvs;
-                    for (unsigned int i = 0; i < m_currentShaderHighestRTV + 1; i++) {
-                        rtvs.push_back(nullptr);
-                    }
-
-                    m_context->OMSetRenderTargets((UINT)rtvs.size(), rtvs.data(), nullptr);
-                    m_currentShaderHighestRTV = 0;
-                }
+                unsetRenderTargets();
                 {
                     std::vector<ID3D11ShaderResourceView*> srvs;
                     for (unsigned int i = 0; i < m_currentShaderHighestSRV + 1; i++) {
@@ -1264,7 +1254,7 @@ namespace {
                 }
                 {
                     std::vector<ID3D11UnorderedAccessView*> uavs;
-                    for (unsigned int i = 0; i < m_currentShaderHighestRTV + 1; i++) {
+                    for (unsigned int i = 0; i < m_currentShaderHighestUAV + 1; i++) {
                         uavs.push_back(nullptr);
                     }
 
@@ -1481,6 +1471,9 @@ namespace {
             m_fontNormal->Flush(get(m_context));
             m_fontBold->Flush(get(m_context));
             m_context->Flush();
+
+            // FW1FontWrapper leaves a GS configured. Unset it.
+            m_context->GSSetShader(nullptr, nullptr, 0);
         }
 
         void setMipMapBias(config::MipMapBias biasing, float bias = 0.f) override {
@@ -2027,6 +2020,11 @@ namespace {
         int32_t m_currentDrawDepthBufferSlice;
         std::shared_ptr<ISimpleMesh> m_currentMesh;
 
+        std::shared_ptr<IQuadShader> m_currentQuadShader;
+        std::shared_ptr<IComputeShader> m_currentComputeShader;
+        uint32_t m_currentShaderHighestSRV;
+        uint32_t m_currentShaderHighestUAV;
+
         ComPtr<ID3D11InfoQueue> m_infoQueue;
 
         config::MipMapBias m_mipMapBiasingType{config::MipMapBias::Off};
@@ -2040,12 +2038,6 @@ namespace {
         CopyTextureEvent m_copyTextureEvent;
         std::set<ID3D11DepthStencilView*> m_invertedDepthStencil;
         std::atomic<bool> m_blockEvents{false};
-
-        mutable std::shared_ptr<IQuadShader> m_currentQuadShader;
-        mutable std::shared_ptr<IComputeShader> m_currentComputeShader;
-        mutable uint32_t m_currentShaderHighestSRV;
-        mutable uint32_t m_currentShaderHighestUAV;
-        mutable uint32_t m_currentShaderHighestRTV;
 
         static XrSwapchainCreateInfo getTextureInfo(const D3D11_TEXTURE2D_DESC& textureDesc) {
             XrSwapchainCreateInfo info;

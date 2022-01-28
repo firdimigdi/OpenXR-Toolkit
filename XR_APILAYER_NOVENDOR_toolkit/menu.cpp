@@ -152,7 +152,7 @@ namespace {
         bool m_isTab;
     };
 
-    enum class MenuTab { Performance = 0, Appearance, Inputs, Menu };
+    enum class MenuTab { Performance = 0, Appearance, Inputs, Menu, Developer };
 
     // The logic of our menus.
     class MenuHandler : public IMenuHandler {
@@ -221,10 +221,14 @@ namespace {
             }
 
             // Prepare the tabs.
-            static const std::string_view tabs[] = {"Performance", "Appearance", "Inputs", "Menu"};
-            m_menuEntries.push_back({0, "", MenuEntryType::Tabs, "", 0, ARRAYSIZE(tabs) - 1, [&](int value) {
-                                         return std::string(tabs[value]);
-                                     }});
+            static const std::string_view tabs[] = {"Performance", "Appearance", "Inputs", "Menu", "Developer"};
+            m_menuEntries.push_back({0,
+                                     "",
+                                     MenuEntryType::Tabs,
+                                     "",
+                                     0,
+                                     ARRAYSIZE(tabs) - (m_configManager->getValue(SettingDeveloper) ? 1 : 2),
+                                     [&](int value) { return std::string(tabs[value]); }});
             m_menuEntries.back().pValue = reinterpret_cast<int*>(&m_currentTab);
             m_menuEntries.back().visible = true; /* Always visible. */
 
@@ -238,6 +242,7 @@ namespace {
             setupAppearanceTab();
             setupInputsTab(isPredictionDampeningSupported);
             setupMenuTab();
+            setupDeveloperTab();
 
             m_menuEntries.push_back({0, "Exit menu", MenuEntryType::ExitButton, BUTTON_OR_SEPARATOR});
             m_menuEntries.back().visible = true; /* Always visible. */
@@ -1091,6 +1096,50 @@ namespace {
 
             m_menuEntries.push_back(
                 {OptionIndent, "Restore defaults", MenuEntryType::RestoreDefaultsButton, BUTTON_OR_SEPARATOR});
+
+            // Must be kept last.
+            menuTab.finalize();
+        }
+
+        void setupDeveloperTab() {
+            if (!m_configManager->getValue(SettingDeveloper)) {
+                return;
+            }
+
+            MenuGroup menuTab(
+                m_menuGroups,
+                m_menuEntries,
+                [&] { return m_currentTab == MenuTab::Developer; } /* visible condition */,
+                true /* isTab */);
+
+            m_menuEntries.push_back({OptionIndent,
+                                     "Preview texture",
+                                     MenuEntryType::Choice,
+                                     SettingDeveloperPreviewTarget,
+                                     0,
+                                     (int)PreviewTarget::MaxValue - 1,
+                                     [](int value) {
+                                         const std::string_view labels[] = {"Color", "Depth"};
+                                         return std::string(labels[value]);
+                                     }});
+            m_menuEntries.push_back({OptionIndent,
+                                     "Preview eye",
+                                     MenuEntryType::Choice,
+                                     SettingDeveloperPreviewEye,
+                                     0,
+                                     ViewCount - 1,
+                                     [](int value) {
+                                         const std::string_view labels[] = {"Left", "Right"};
+                                         return std::string(labels[value]);
+                                     }});
+            m_menuEntries.push_back({OptionIndent,
+                                     "Depth scale",
+                                     MenuEntryType::Slider,
+                                     SettingDeveloperDepthScale,
+                                     -1000,
+                                     1000,
+                                     [](int value) { return fmt::format("{:.2f}", value / 100.f); }});
+            m_menuEntries.back().acceleration = 10;
 
             // Must be kept last.
             menuTab.finalize();

@@ -42,6 +42,10 @@ namespace toolkit {
 
         bool UpdateKeyState(bool& keyState, const std::vector<int>& vkModifiers, int vkKey, bool isRepeat);
 
+        std::shared_ptr<IPreviewWindow> CreatePreviewWindow(const std::string& appName,
+                                                            std::shared_ptr<config::IConfigManager> configManager,
+                                                            std::shared_ptr<graphics::IDevice> device);
+
     } // namespace utilities
 
     namespace config {

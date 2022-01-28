@@ -1446,7 +1446,7 @@ namespace {
             }
         }
 
-        void dispatchShader(bool doNotClear) const override {
+        void dispatchShader(bool doNotClear) override {
             if (m_currentQuadShader || m_currentComputeShader) {
                 {
                     D3D12Shader* d3d12Shader;
@@ -2209,8 +2209,8 @@ namespace {
         bool m_currentDrawDepthBufferIsInverted;
 
         std::shared_ptr<ISimpleMesh> m_currentMesh;
-        mutable std::shared_ptr<IQuadShader> m_currentQuadShader;
-        mutable std::shared_ptr<IComputeShader> m_currentComputeShader;
+        std::shared_ptr<IQuadShader> m_currentQuadShader;
+        std::shared_ptr<IComputeShader> m_currentComputeShader;
         uint32_t m_currentRootSlot;
 
         ComPtr<ID3D12InfoQueue> m_infoQueue;

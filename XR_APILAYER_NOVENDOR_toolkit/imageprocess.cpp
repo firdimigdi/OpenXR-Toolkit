@@ -36,14 +36,18 @@ namespace {
     using namespace toolkit::graphics;
     using namespace toolkit::log;
 
-    __declspec(align(256)) struct ImageProcessorConfig { DirectX::XMFLOAT4X4 BrightnessContrastSaturationMatrix; };
+    __declspec(align(256)) struct ImageProcessorConfig {
+        DirectX::XMFLOAT4X4 BrightnessContrastSaturationMatrix;
+        float DepthScale;
+    };
 
     class ImageProcessor : public IImageProcessor {
       public:
         ImageProcessor(std::shared_ptr<IConfigManager> configManager,
                        std::shared_ptr<IDevice> graphicsDevice,
                        const std::string& shaderFile)
-            : m_configManager(configManager), m_device(graphicsDevice) {
+            : m_configManager(configManager), m_device(graphicsDevice),
+              m_isDebugShader(shaderFile.find("debug_") == 0) {
             const auto shadersDir = dllHome / "shaders";
             const auto shaderPath = shadersDir / shaderFile;
             m_shader = m_device->createQuadShader(
@@ -102,10 +106,16 @@ namespace {
                 }
 
                 ImageProcessorConfig staging;
-                DirectX::XMStoreFloat4x4(&staging.BrightnessContrastSaturationMatrix,
+                DirectX::XMStoreFloat4x4(
+                    &staging.BrightnessContrastSaturationMatrix,
                     DirectX::XMMatrixMultiply(brightnessMatrix,
-                                              DirectX::XMMatrixMultiply(contrastMatrix, saturationMatrix))
-                );
+                                              DirectX::XMMatrixMultiply(contrastMatrix, saturationMatrix)));
+                m_configBuffer->uploadData(&staging, sizeof(staging));
+            }
+
+            if (m_isDebugShader) {
+                ImageProcessorConfig staging;
+                staging.DepthScale = m_configManager->getValue(SettingDeveloperDepthScale) / 100.f;
                 m_configBuffer->uploadData(&staging, sizeof(staging));
             }
         }
@@ -114,7 +124,7 @@ namespace {
             m_device->setShader(!input->isArray() ? m_shader : m_shaderVPRT);
             m_device->setShaderInput(0, m_configBuffer);
             m_device->setShaderInput(0, input, slice);
-            m_device->setShaderOutput(0, output, slice);
+            m_device->setShaderOutput(0, output, !output->isArray() ? -1 : slice);
 
             m_device->dispatchShader();
         }
@@ -122,6 +132,7 @@ namespace {
       private:
         const std::shared_ptr<IConfigManager> m_configManager;
         const std::shared_ptr<IDevice> m_device;
+        const bool m_isDebugShader;
 
         std::shared_ptr<IQuadShader> m_shader;
         std::shared_ptr<IQuadShader> m_shaderVPRT;
