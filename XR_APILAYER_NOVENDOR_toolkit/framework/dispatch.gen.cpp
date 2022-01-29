@@ -539,6 +539,46 @@ namespace LAYER_NAMESPACE
 		return result;
 	}
 
+	XrResult xrApplyHapticFeedback(XrSession session, const XrHapticActionInfo* hapticActionInfo, const XrHapticBaseHeader* hapticFeedback)
+	{
+		DebugLog("--> xrApplyHapticFeedback\n");
+
+		XrResult result;
+		try
+		{
+			result = LAYER_NAMESPACE::GetInstance()->xrApplyHapticFeedback(session, hapticActionInfo, hapticFeedback);
+		}
+		catch (std::exception& exc)
+		{
+			Log("%s\n", exc.what());
+			result = XR_ERROR_RUNTIME_FAILURE;
+		}
+
+		DebugLog("<-- xrApplyHapticFeedback %d\n", result);
+
+		return result;
+	}
+
+	XrResult xrStopHapticFeedback(XrSession session, const XrHapticActionInfo* hapticActionInfo)
+	{
+		DebugLog("--> xrStopHapticFeedback\n");
+
+		XrResult result;
+		try
+		{
+			result = LAYER_NAMESPACE::GetInstance()->xrStopHapticFeedback(session, hapticActionInfo);
+		}
+		catch (std::exception& exc)
+		{
+			Log("%s\n", exc.what());
+			result = XR_ERROR_RUNTIME_FAILURE;
+		}
+
+		DebugLog("<-- xrStopHapticFeedback %d\n", result);
+
+		return result;
+	}
+
 
 	// Auto-generated dispatcher handler.
 	XrResult OpenXrApi::xrGetInstanceProcAddr(XrInstance instance, const char* name, PFN_xrVoidFunction* function)
@@ -678,6 +718,16 @@ namespace LAYER_NAMESPACE
 			{
 				m_xrSyncActions = reinterpret_cast<PFN_xrSyncActions>(*function);
 				*function = reinterpret_cast<PFN_xrVoidFunction>(LAYER_NAMESPACE::xrSyncActions);
+			}
+			else if (apiName == "xrApplyHapticFeedback")
+			{
+				m_xrApplyHapticFeedback = reinterpret_cast<PFN_xrApplyHapticFeedback>(*function);
+				*function = reinterpret_cast<PFN_xrVoidFunction>(LAYER_NAMESPACE::xrApplyHapticFeedback);
+			}
+			else if (apiName == "xrStopHapticFeedback")
+			{
+				m_xrStopHapticFeedback = reinterpret_cast<PFN_xrStopHapticFeedback>(*function);
+				*function = reinterpret_cast<PFN_xrVoidFunction>(LAYER_NAMESPACE::xrStopHapticFeedback);
 			}
 
 		}

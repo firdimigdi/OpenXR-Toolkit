@@ -89,6 +89,8 @@ namespace {
 
     enum class PoseType { Grip, Aim };
 
+    enum class Gesture { Pinch = 0, ThumbPress, IndexBend, FingerGun, Squeeze, Custom1 };
+
     struct ActionSpace {
         Hand hand;
         PoseType poseType;
@@ -139,6 +141,18 @@ namespace {
 
         // The transformation to apply to the aim and grip poses.
         XrPosef transform[HandCount];
+
+        // The frequency to respond to haptics (NAN for any frequency).
+        float hapticsResponseFrequency;
+
+        // The sound file to play upon haptics.
+        std::string hapticsAudioPath;
+
+        // The gesture that triggers an action upon haptics.
+        Gesture hapticsResponseGesture;
+
+        // The target XrAction path to simulate upon haptics.
+        std::string hapticsAction;
 
         // The index of the 1st joint (see enum XrHandJointEXT) to use for 1st custom gesture.
         int custom1Joint1Index;
@@ -443,6 +457,8 @@ namespace {
                 }
             }
 
+            // TODO: Clear haptics state.
+
             // Inhibit one and or the other if request. The config file acts as a global override.
             const auto handTrackingEnabled =
                 m_configManager->getEnumValue<HandTrackingEnabled>(SettingHandTrackingEnabled);
@@ -682,6 +698,26 @@ namespace {
             return m_trackedRecently[side];
         }
 
+        void handleOutput(Hand hand, float frequency, XrDuration duration) override {
+            const uint32_t side = hand == Hand::Left ? 0 : 1;
+            if (isnan(frequency)) {
+                // TODO: Clear haptics state.
+                return;
+            }
+
+            m_gesturesState.hapticsFrequency[side] = frequency;
+            // TODO: Latch duration.
+
+            // Filter on frequency value.
+            if (!m_config.hapticsAudioPath.empty() &&
+                (isnan(m_config.hapticsResponseFrequency) ||
+                 std::abs(m_config.hapticsResponseFrequency - frequency) < FLT_EPSILON)) {
+                // TODO: Preload sound in memory.
+                const auto& sndFile = (localAppData / "audio" / m_config.hapticsAudioPath).string();
+                PlaySoundA(sndFile.c_str(), nullptr, SND_ASYNC | SND_FILENAME);
+            }
+        }
+
         const GesturesState& getGesturesState() const override {
             return m_gesturesState;
         }
@@ -767,6 +803,7 @@ namespace {
                     continue;
                 }
 
+                // TODO: Check for haptics state.
 #define ONE_HANDED_GESTURE(configName, joint1, joint2)                                                                 \
     do {                                                                                                               \
         if (!m_config.configName##Action[side].empty()) {                                                              \
@@ -962,6 +999,10 @@ namespace {
         gripJointIndex = XR_HAND_JOINT_PALM_EXT;
         clickThreshold = 0.75f;
         transform[0] = transform[1] = Pose::Identity();
+        hapticsResponseFrequency = NAN;
+        hapticsAudioPath = "haptics.wav";
+        hapticsResponseGesture = Gesture::FingerGun;
+        hapticsAction = "";
         pinchAction[0] = pinchAction[1] = "";
         pinchNear = 0.0f;
         pinchFar = 0.05f;
@@ -1025,6 +1066,14 @@ namespace {
                     custom1Joint2Index = std::stoi(value);
                 } else if (name == "click_threshold") {
                     clickThreshold = std::stof(value);
+                } else if (name == "haptics_frequency") {
+                    hapticsResponseFrequency = std::stof(value);
+                } else if (name == "haptics_audio_path") {
+                    hapticsAudioPath = value;
+                } else if (name == "haptics_gesture") {
+                    hapticsResponseGesture = (Gesture)std::stoi(value);
+                } else if (name == "haptics_action") {
+                    hapticsAction = value;
                 } else if (side >= 0 && subName == "enabled") {
                     const bool boolValue = value == "1" || value == "true";
                     if (side == 0) {
@@ -1142,6 +1191,18 @@ namespace {
             Log("Grip pose uses joint: %d\n", gripJointIndex);
             Log("Aim pose uses joint: %d\n", aimJointIndex);
             Log("Click threshold: %.3f\n", clickThreshold);
+        }
+        if (!hapticsAudioPath.empty()) {
+            if (isnan(hapticsResponseFrequency)) {
+                Log("Playing sound effect %s on vibration\n", hapticsAudioPath.c_str());
+            } else {
+                Log("Playing sound effect %s on %.3f Hz vibration\n",
+                    hapticsAudioPath.c_str(),
+                    hapticsResponseFrequency);
+            }
+        }
+        if (!hapticsAction.empty()) {
+            Log("Haptics translates to: %s (on gesture %u)\n", hapticsAction.c_str(), hapticsResponseGesture);
         }
         if (custom1Joint1Index >= 0 && custom1Joint2Index >= 0) {
             Log("Custom gesture uses joints: %d %d\n", custom1Joint1Index, custom1Joint2Index);
