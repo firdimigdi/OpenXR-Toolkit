@@ -62,15 +62,15 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)\external\OpenXR-SDK\include;$(SolutionDir)\external\OpenXR-SDK\src\common;$(SolutionDir)\external\OpenXR-MixedReality\Shared\XrUtility;$(SolutionDir)\external\NVIDIAImageScaling\NIS;$(SolutionDir)\external\FidelityFX-FSR\ffx-fsr;$(SolutionDir)\external\d3dx12;$(SolutionDir)\external\NVAPI</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)\external\OpenXR-SDK\include;$(SolutionDir)\external\OpenXR-SDK\src\common;$(SolutionDir)\external\OpenXR-MixedReality\Shared\XrUtility;$(SolutionDir)\external\NVIDIAImageScaling\NIS;$(SolutionDir)\external\FidelityFX-FSR\ffx-fsr;$(SolutionDir)\external\d3dx12;$(SolutionDir)\external\NVAPI;$(SolutionDir)\external\DLSS\include</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>nvapi64.lib;ws2_32.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;d3d11.lib;d3d12.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)\external\NVAPI\amd64</AdditionalLibraryDirectories>
+      <AdditionalDependencies>nvapi64.lib;ws2_32.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;d3d11.lib;d3d12.lib;nvsdk_ngx_d_dbg.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)\external\NVAPI\amd64;$(SolutionDir)\external\DLSS\lib\Windows_x86_64\x86_64</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>copy $(ProjectDir)\$(ProjectName).json $(OutDir)
@@ -85,6 +85,7 @@ type $(SolutionDir)\patches\FidelityFX-FSR\0000-conditionaly-compile-denoise-cod
 copy $(ProjectDir)\NIS.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\FSR.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\postprocess.hlsl $(OutDir)\shaders
+copy $(SolutionDir)\external\DLSS\lib\Windows_x86_64\dev\nvngx_dlss.dll $(OutDir)
 </Command>
     </PostBuildEvent>
     <PostBuildEvent>
@@ -115,7 +116,7 @@ copy $(ProjectDir)\postprocess.hlsl $(OutDir)\shaders
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)\external\OpenXR-SDK\include;$(SolutionDir)\external\OpenXR-SDK\src\common;$(SolutionDir)\external\OpenXR-MixedReality\Shared\XrUtility;$(SolutionDir)\external\NVIDIAImageScaling\NIS;$(SolutionDir)\external\FidelityFX-FSR\ffx-fsr;$(SolutionDir)\external\d3dx12;$(SolutionDir)\external\NVAPI</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)\external\OpenXR-SDK\include;$(SolutionDir)\external\OpenXR-SDK\src\common;$(SolutionDir)\external\OpenXR-MixedReality\Shared\XrUtility;$(SolutionDir)\external\NVIDIAImageScaling\NIS;$(SolutionDir)\external\FidelityFX-FSR\ffx-fsr;$(SolutionDir)\external\d3dx12;$(SolutionDir)\external\NVAPI;$(SolutionDir)\external\DLSS\include</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -124,8 +125,8 @@ copy $(ProjectDir)\postprocess.hlsl $(OutDir)\shaders
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>nvapi64.lib;ws2_32.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;d3d11.lib;d3d12.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)\external\NVAPI\amd64</AdditionalLibraryDirectories>
+      <AdditionalDependencies>nvapi64.lib;ws2_32.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;d3d11.lib;d3d12.lib;nvsdk_ngx_d.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)\external\NVAPI\amd64;$(SolutionDir)\external\DLSS\lib\Windows_x86_64\x86_64</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>copy $(ProjectDir)\$(ProjectName).json $(OutDir)
@@ -140,6 +141,7 @@ type $(SolutionDir)\patches\FidelityFX-FSR\0000-conditionaly-compile-denoise-cod
 copy $(ProjectDir)\NIS.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\FSR.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\postprocess.hlsl $(OutDir)\shaders
+copy $(SolutionDir)\external\DLSS\lib\Windows_x86_64\rel\nvngx_dlss.dll $(OutDir)
 </Command>
     </PostBuildEvent>
     <PostBuildEvent>
