@@ -63,6 +63,9 @@ namespace {
         bool delayedRelease{false};
 
         bool registeredWithFrameAnalyzer{false};
+
+        // An optional super-sampler.
+        std::shared_ptr<graphics::ISuperSampler> superSampler[utilities::ViewCount];
     };
 
     class OpenXrLayer : public toolkit::OpenXrApi {
@@ -203,8 +206,7 @@ namespace {
                 m_configManager->setEnumDefault(config::SettingVRS, config::VariableShadingRateType::None);
                 m_configManager->setEnumDefault(config::SettingVRSQuality,
                                                 config::VariableShadingRateQuality::Performance);
-                m_configManager->setEnumDefault(config::SettingVRSPattern,
-                                                config::VariableShadingRatePattern::Wide);
+                m_configManager->setEnumDefault(config::SettingVRSPattern, config::VariableShadingRatePattern::Wide);
                 m_configManager->setDefault(config::SettingVRSInner, 0); // 1x
                 m_configManager->setDefault(config::SettingVRSInnerRadius, 55);
                 m_configManager->setDefault(config::SettingVRSMiddle, 2); // 1/4x
@@ -214,6 +216,7 @@ namespace {
                 m_configManager->setDefault(config::SettingBrightness, 500);
                 m_configManager->setDefault(config::SettingContrast, 500);
                 m_configManager->setDefault(config::SettingSaturation, 500);
+                m_configManager->setEnumDefault(config::SettingDLSSMode, NVSDK_NGX_PerfQuality_Value_Balanced);
 
                 // Workaround: the first versions of the toolkit used a different representation for the world scale.
                 // Migrate the value upon first run.
@@ -250,7 +253,10 @@ namespace {
                 case config::ScalingType::FSR:
                     [[fallthrough]];
 
-                case config::ScalingType::NIS: {
+                case config::ScalingType::NIS:
+                    [[fallthrough]];
+
+                case config::ScalingType::DLSS: {
                     std::tie(inputWidth, inputHeight) =
                         config::GetScaledDimensions(m_configManager.get(), m_displayWidth, m_displayHeight, 2);
                 } break;
@@ -313,16 +319,11 @@ namespace {
 
                 if (m_graphicsDevice) {
                     // Initialize the other resources.
-
-                    uint32_t inputWidth = m_displayWidth;
-                    uint32_t inputHeight = m_displayHeight;
+                    m_superSamplerFactory =
+                        graphics::CreateDLSSFactory(m_configManager, m_graphicsDevice, m_displayWidth, m_displayHeight);
+                    const bool isDLSSSupported = !!m_superSamplerFactory;
 
                     m_upscaleMode = m_configManager->getEnumValue<config::ScalingType>(config::SettingScalingType);
-                    if (m_upscaleMode != config::ScalingType::None) {
-                        std::tie(inputWidth, inputHeight) =
-                            config::GetScaledDimensions(m_configManager.get(), m_displayWidth, m_displayHeight, 2);
-                        m_upscalingFactor = m_configManager->getValue(config::SettingScaling);
-                    }
 
                     switch (m_upscaleMode) {
                     case config::ScalingType::FSR:
@@ -335,6 +336,13 @@ namespace {
                             m_configManager, m_graphicsDevice, m_displayWidth, m_displayHeight);
                         break;
 
+                    case config::ScalingType::DLSS:
+                        // Ignore the request if it is not supported.
+                        if (!m_superSamplerFactory) {
+                            m_upscaleMode = config::ScalingType::None;
+                        }
+                        break;
+
                     case config::ScalingType::None:
                         break;
 
@@ -343,12 +351,27 @@ namespace {
                         break;
                     }
 
+                    uint32_t inputWidth = m_displayWidth;
+                    uint32_t inputHeight = m_displayHeight;
+                    if (m_upscaleMode != config::ScalingType::None) {
+                        std::tie(inputWidth, inputHeight) =
+                            config::GetScaledDimensions(m_configManager.get(), m_displayWidth, m_displayHeight, 2);
+                        m_upscalingFactor = m_configManager->getValue(config::SettingScaling);
+                    }
+
                     // Per NIS SDK documentation.
                     m_mipMapBiasForUpscaling = -std::log2f((float)m_displayWidth / inputWidth);
                     Log("MipMap biasing for upscaling is: %.3f\n", m_mipMapBiasForUpscaling);
 
                     m_postProcessor =
                         graphics::CreateImageProcessor(m_configManager, m_graphicsDevice, "postprocess.hlsl");
+
+                    if (m_upscaleMode == config::ScalingType::DLSS) {
+                        m_motionVectorProcessor = graphics::CreateMotionVectorProcessor(m_graphicsDevice);
+                    } else {
+                        // We won't be using DLSS, free up some memory.
+                        m_superSamplerFactory.reset();
+                    }
 
                     m_configManager->setDefault("disable_frame_analyzer", 0);
                     if (!m_configManager->getValue("disable_frame_analyzer")) {
@@ -433,7 +456,9 @@ namespace {
                             m_supportHandTracking,
                             isPredictionDampeningSupported,
                             isMotionReprojectionRateSupported,
-                            m_variableRateShader ? m_variableRateShader->getMaxDownsamplePow2() : 0);
+                            m_variableRateShader ? m_variableRateShader->getMaxDownsamplePow2() : 0,
+                            isDLSSSupported,
+                            m_superSamplerFactory ? m_superSamplerFactory->hasUltraSettings() : false);
                     }
 
                     // Create a reference space to calculate projection views.
@@ -488,6 +513,7 @@ namespace {
                 m_performanceCounters.endFrameCpuTimer.reset();
                 m_performanceCounters.overlayCpuTimer.reset();
                 m_swapchains.clear();
+                m_superSamplerFactory.reset();
                 m_menuHandler.reset();
                 if (m_graphicsDevice) {
                     m_graphicsDevice->shutdown();
@@ -539,7 +565,7 @@ namespace {
                         chainCreateInfo.usageFlags |= XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
                     }
 
-                    if (m_upscaler) {
+                    if (m_upscaler || m_upscaleMode == config::ScalingType::DLSS) {
                         // When upscaling, be sure to request the full resolution with the runtime.
                         chainCreateInfo.width = m_displayWidth;
                         chainCreateInfo.height = m_displayHeight;
@@ -557,8 +583,8 @@ namespace {
                         chainCreateInfo.usageFlags |= XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
                     }
                 } else if (createInfo->usageFlags & XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
-                    if (m_motionVectorProcessor) {
-                        // The depth buffer must be sampled for computing motion vectors.
+                    if (m_motionVectorProcessor || m_upscaleMode == config::ScalingType::DLSS) {
+                        // The depth buffer must be sampled for computing motion vectors or for super-sampling.
                         chainCreateInfo.usageFlags |= XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
                     }
                 }
@@ -645,12 +671,23 @@ namespace {
                     throw std::runtime_error("Unsupported graphics runtime");
                 }
 
+                // Create per-image resources.
                 for (uint32_t i = 0; i < imageCount; i++) {
                     SwapchainImages& images = swapchainState.images[i];
 
                     // We do no processing to depth buffers.
                     if (!(createInfo->usageFlags & XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT)) {
                         continue;
+                    }
+
+                    // Create common resources.
+                    if (i == 0) {
+                        if (m_upscaleMode == config::ScalingType::DLSS) {
+                            swapchainState.superSampler[0] = m_superSamplerFactory->createSuperSampler();
+                            if (createInfo->arraySize > 1) {
+                                swapchainState.superSampler[1] = m_superSamplerFactory->createSuperSampler();
+                            }
+                        }
                     }
 
                     // Create other entries in the chain based on the processing to do (scaling,
@@ -660,7 +697,7 @@ namespace {
                         // Create an intermediate texture with the same resolution as the input.
                         XrSwapchainCreateInfo inputCreateInfo = *createInfo;
                         inputCreateInfo.usageFlags |= XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
-                        if (m_upscaler) {
+                        if (m_upscaler || m_upscaleMode == config::ScalingType::DLSS) {
                             // The upscaler requires to use as a shader input.
                             inputCreateInfo.usageFlags |= XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
                         }
@@ -677,7 +714,7 @@ namespace {
                         }
                     }
 
-                    if (m_upscaler) {
+                    if (m_upscaler || m_upscaleMode == config::ScalingType::DLSS) {
                         // Create an app texture with the lower resolution.
                         XrSwapchainCreateInfo inputCreateInfo = *createInfo;
                         inputCreateInfo.usageFlags |= XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
@@ -714,7 +751,7 @@ namespace {
                         // Create an intermediate texture with the same resolution as the output.
                         XrSwapchainCreateInfo intermediateCreateInfo = chainCreateInfo;
                         intermediateCreateInfo.usageFlags |= XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
-                        if (m_upscaler) {
+                        if (m_upscaler || m_upscaleMode == config::ScalingType::DLSS) {
                             // The upscaler requires to use as an unordered access view.
                             intermediateCreateInfo.usageFlags |= XR_SWAPCHAIN_USAGE_UNORDERED_ACCESS_BIT;
 
@@ -1204,6 +1241,13 @@ namespace {
             if (m_upscaler) {
                 m_upscaler->update();
             }
+            for (auto& swapchain : m_swapchains) {
+                for (uint32_t i = 0; i < utilities::ViewCount; i++) {
+                    if (swapchain.second.superSampler[i]) {
+                        swapchain.second.superSampler[i]->update();
+                    }
+                }
+            }
             if (m_postProcessor) {
                 m_postProcessor->update();
             }
@@ -1387,7 +1431,7 @@ namespace {
                         swapchainImages.view[eye].pose = view.pose;
                         swapchainImages.view[eye].fov = view.fov;
                         swapchainImages.view[eye].nearFar = nearFar;
-                        const bool isDepthInverted = nearFar.Far < nearFar.Near;
+                        bool isDepthInverted = nearFar.Far < nearFar.Near;
 
                         // Now that we know what eye the swapchain is used for, register it.
                         // TODO: We always assume that if VPRT is used, left eye is texture 0 and right eye is
@@ -1405,7 +1449,8 @@ namespace {
                             const auto& lastSwapchainImages =
                                 swapchainState.images[swapchainState.lastAcquiredImageIndex];
 
-                            m_stats.motionVectorsGpuTimeUs += swapchainImages.motionVectorsGpuTimer[gpuTimerIndex]->query();
+                            m_stats.motionVectorsGpuTimeUs +=
+                                swapchainImages.motionVectorsGpuTimer[gpuTimerIndex]->query();
                             swapchainImages.motionVectorsGpuTimer[gpuTimerIndex]->start();
 
                             m_motionVectorProcessor->process(lastSwapchainImages.view[eye],
@@ -1456,6 +1501,29 @@ namespace {
                                 m_upscaler->upscale(swapchainImages.chain[lastImage],
                                                     swapchainImages.chain[nextImage],
                                                     useVPRT ? eye : -1);
+                                swapchainImages.upscalerGpuTimer[gpuTimerIndex]->stop();
+
+                                lastImage++;
+                            }
+                        } else if (swapchainState.superSampler[useVPRT ? eye : 0]) {
+                            // Perform super-sampling (if requested).
+                            nextImage++;
+
+                            // Skip when no depth buffer is submitted.
+                            // We allow to bypass scaling when the menu option is turned off. This is only for quick
+                            // comparison/testing, since we're still holding to all the underlying resources.
+                            if (depthBuffer && m_configManager->getEnumValue<config::ScalingType>(
+                                                   config::SettingScalingType) != config::ScalingType::None) {
+                                m_stats.upscalerGpuTimeUs += swapchainImages.upscalerGpuTimer[gpuTimerIndex]->query();
+                                swapchainImages.upscalerGpuTimer[gpuTimerIndex]->start();
+
+                                swapchainState.superSampler[useVPRT ? eye : 0]->upscale(
+                                    swapchainImages.chain[lastImage],
+                                    swapchainImages.motionVectors,
+                                    depthBuffer,
+                                    isDepthInverted,
+                                    swapchainImages.chain[nextImage],
+                                    useVPRT ? eye : -1);
                                 swapchainImages.upscalerGpuTimer[gpuTimerIndex]->stop();
 
                                 lastImage++;
@@ -1651,6 +1719,7 @@ namespace {
         std::map<XrSwapchain, SwapchainState> m_swapchains;
 
         std::shared_ptr<graphics::IUpscaler> m_upscaler;
+        std::shared_ptr<graphics::ISuperSamplerFactory> m_superSamplerFactory;
         config::ScalingType m_upscaleMode{config::ScalingType::None};
         uint32_t m_upscalingFactor{100};
         float m_mipMapBiasForUpscaling{0.f};

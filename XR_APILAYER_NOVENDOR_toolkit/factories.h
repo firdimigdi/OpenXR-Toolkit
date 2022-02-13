@@ -88,6 +88,12 @@ namespace toolkit {
 
         std::shared_ptr<IMotionVectorProcessor> CreateMotionVectorProcessor(std::shared_ptr<IDevice> graphicsDevice);
 
+        std::shared_ptr<ISuperSamplerFactory>
+        CreateDLSSFactory(std::shared_ptr<toolkit::config::IConfigManager> configManager,
+                          std::shared_ptr<IDevice> graphicsDevice,
+                          uint32_t outputWidth,
+                          uint32_t outputHeight);
+
         bool IsDeviceSupportingFP16(std::shared_ptr<IDevice> device);
 
         GpuArchitecture GetGpuArchitecture(UINT VendorId);
@@ -125,7 +131,9 @@ namespace toolkit {
                                                         bool isHandTrackingSupported,
                                                         bool isPredictionDampeningSupported,
                                                         bool isMotionReprojectionRateSupported,
-                                                        uint8_t variableRateShaderMaxDownsamplePow2);
+                                                        uint8_t variableRateShaderMaxDownsamplePow2,
+                                                        bool isDLSSSupported,
+                                                        bool isDLSSUltraSupported);
 
     } // namespace menu
 

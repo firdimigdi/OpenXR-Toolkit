@@ -165,7 +165,9 @@ namespace {
                     bool isHandTrackingSupported,
                     bool isPredictionDampeningSupported,
                     bool isMotionReprojectionRateSupported,
-                    uint8_t variableRateShaderMaxDownsamplePow2)
+                    uint8_t variableRateShaderMaxDownsamplePow2,
+                    bool isDLSSSupported,
+                    bool isDLSSUltraSupported)
             : m_configManager(configManager), m_device(device), m_displayWidth(displayWidth),
               m_displayHeight(displayHeight), m_keyModifiers(keyModifiers),
               m_isHandTrackingSupported(isHandTrackingSupported) {
@@ -229,7 +231,10 @@ namespace {
             m_menuEntries.push_back({0, "", MenuEntryType::Separator, BUTTON_OR_SEPARATOR});
             m_menuEntries.back().visible = true; /* Always visible. */
 
-            setupPerformanceTab(isMotionReprojectionRateSupported, variableRateShaderMaxDownsamplePow2);
+            setupPerformanceTab(isMotionReprojectionRateSupported,
+                                variableRateShaderMaxDownsamplePow2,
+                                isDLSSSupported,
+                                isDLSSUltraSupported);
             setupAppearanceTab();
             setupInputsTab(isPredictionDampeningSupported);
             setupMenuTab();
@@ -556,14 +561,13 @@ namespace {
                     if (m_configManager->isSafeMode()) {
                         top += fontSize;
 
-                        left +=
-                            m_device->drawString(L"\x26A0  Running in safe mode with defaults settings  \x26A0",
-                                                 TextStyle::Bold,
-                                                 fontSize,
-                                                 leftAlign,
-                                                 top,
-                                                 textColorWarning,
-                                                 measure);
+                        left += m_device->drawString(L"\x26A0  Running in safe mode with defaults settings  \x26A0",
+                                                     TextStyle::Bold,
+                                                     fontSize,
+                                                     leftAlign,
+                                                     top,
+                                                     textColorWarning,
+                                                     measure);
 
                         top += 1.05f * fontSize;
                     } else if (m_needRestart) {
@@ -709,7 +713,10 @@ namespace {
         }
 
       private:
-        void setupPerformanceTab(bool isMotionReprojectionRateSupported, uint8_t variableRateShaderMaxDownsamplePow2) {
+        void setupPerformanceTab(bool isMotionReprojectionRateSupported,
+                                 uint8_t variableRateShaderMaxDownsamplePow2,
+                                 bool isDLSSSupported,
+                                 bool isDLSSUltraSupported) {
             MenuGroup performanceTab(
                 m_menuGroups,
                 m_menuEntries,
@@ -740,9 +747,9 @@ namespace {
                                      MenuEntryType::Choice,
                                      SettingScalingType,
                                      0,
-                                     (int)ScalingType::MaxValue - 1,
+                                     (int)ScalingType::MaxValue - (isDLSSSupported ? 1 : 2),
                                      [](int value) {
-                                         const std::string_view labels[] = {"Off", "NIS", "FSR"};
+                                         const std::string_view labels[] = {"Off", "NIS", "FSR", "DLSS"};
                                          return std::string(labels[value]);
                                      }});
             m_menuEntries.back().noCommitDelay = true;
@@ -789,6 +796,24 @@ namespace {
                  }});
             m_menuEntries.back().noCommitDelay = true;
             anamorphicGroup.finalize();
+
+            if (isDLSSSupported) {
+                MenuGroup dlssGroup(m_menuGroups, m_menuEntries, [&] {
+                    return getCurrentScalingType() == ScalingType::DLSS;
+                } /* visible condition */);
+                m_menuEntries.push_back({SubGroupIndent,
+                                         "Perf/Quality",
+                                         MenuEntryType::Slider,
+                                         SettingDLSSMode,
+                                         0,
+                                         isDLSSUltraSupported ? 4 : 2,
+                                         [](int value) {
+                                             const std::string_view labels[] = {
+                                                 "MaxPerf", "Balanced", "MaxQuality", "UltraPerf", "UltraQualilty"};
+                                             return std::string(labels[value]);
+                                         }});
+                dlssGroup.finalize();
+            }
 
             m_menuEntries.push_back(
                 {SubGroupIndent, "Sharpness", MenuEntryType::Slider, SettingSharpness, 0, 100, [](int value) {
@@ -1184,7 +1209,9 @@ namespace toolkit::menu {
                                                     bool isHandTrackingSupported,
                                                     bool isPredictionDampeningSupported,
                                                     bool isMotionReprojectionRateSupported,
-                                                    uint8_t variableRateShaderMaxDownsamplePow2) {
+                                                    uint8_t variableRateShaderMaxDownsamplePow2,
+                                                    bool isDLSSSupported,
+                                                    bool isDLSSUltraSupported) {
         return std::make_shared<MenuHandler>(configManager,
                                              device,
                                              displayWidth,
@@ -1193,7 +1220,9 @@ namespace toolkit::menu {
                                              isHandTrackingSupported,
                                              isPredictionDampeningSupported,
                                              isMotionReprojectionRateSupported,
-                                             variableRateShaderMaxDownsamplePow2);
+                                             variableRateShaderMaxDownsamplePow2,
+                                             isDLSSSupported,
+                                             isDLSSUltraSupported);
     }
 
 } // namespace toolkit::menu

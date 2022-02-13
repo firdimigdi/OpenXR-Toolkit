@@ -87,11 +87,12 @@ namespace toolkit {
         const std::string SettingBrightness = "brightness";
         const std::string SettingContrast = "contrast";
         const std::string SettingSaturation = "saturation";
+        const std::string SettingDLSSMode = "dlss_mode";
 
         enum class OverlayType { None = 0, FPS, Advanced, MaxValue };
         enum class MenuFontSize { Small = 0, Medium, Large, MaxValue };
         enum class MenuTimeout { Small = 0, Medium, Large, MaxValue };
-        enum class ScalingType { None = 0, NIS, FSR, MaxValue };
+        enum class ScalingType { None = 0, NIS, FSR, DLSS, MaxValue };
         enum class HandTrackingEnabled { Off = 0, Both, Left, Right, MaxValue };
         enum class MotionReprojectionRate { Off = 1, R_45Hz, R_30Hz, R_22Hz, MaxValue };
         enum class VariableShadingRateType { None = 0, Preset, Custom, MaxValue };
@@ -583,6 +584,27 @@ namespace toolkit {
                                  std::shared_ptr<ITexture> depth,
                                  std::shared_ptr<ITexture> output,
                                  int32_t slice = -1) = 0;
+        };
+
+        // A texture super-sampler (such as DLSS).
+        struct ISuperSampler {
+            virtual ~ISuperSampler() = default;
+
+            virtual void update() = 0;
+            virtual void upscale(std::shared_ptr<ITexture> input,
+                                 std::shared_ptr<ITexture> motionVectors,
+                                 std::shared_ptr<ITexture> depth,
+                                 bool isDepthInverted,
+                                 std::shared_ptr<ITexture> output,
+                                 int32_t slice = -1) = 0;
+        };
+
+        struct ISuperSamplerFactory {
+            virtual ~ISuperSamplerFactory() = default;
+
+            virtual std::shared_ptr<ISuperSampler> createSuperSampler() = 0;
+
+            virtual bool hasUltraSettings() const = 0;
         };
 
         // A texture post-processor.

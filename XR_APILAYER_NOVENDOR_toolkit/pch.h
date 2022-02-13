@@ -117,3 +117,7 @@ T* detach(ComPtr<T>& object) {
 
 // NVAPI SDK.
 #include <nvapi.h>
+
+// DLSS SDK.
+#include <nvsdk_ngx.h>
+#include <nvsdk_ngx_helpers.h>
