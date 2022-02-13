@@ -127,6 +127,9 @@
     <ClCompile Include="frameanalyzer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="motionvector.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="XR_APILAYER_NOVENDOR_toolkit.json" />
@@ -153,6 +156,9 @@
     </FxCompile>
     <FxCompile Include="FSR.hlsl">
       <Filter>Shader Files\FSR</Filter>
+    </FxCompile>
+    <FxCompile Include="motionvector.hlsl">
+      <Filter>Shader Files</Filter>
     </FxCompile>
   </ItemGroup>
 </Project>

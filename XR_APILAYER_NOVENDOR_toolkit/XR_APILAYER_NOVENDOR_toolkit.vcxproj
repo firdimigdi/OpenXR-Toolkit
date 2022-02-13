@@ -85,6 +85,7 @@ type $(SolutionDir)\patches\FidelityFX-FSR\0000-conditionaly-compile-denoise-cod
 copy $(ProjectDir)\NIS.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\FSR.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\postprocess.hlsl $(OutDir)\shaders
+copy $(ProjectDir)\motionvector.hlsl $(OutDir)\shaders
 copy $(SolutionDir)\external\DLSS\lib\Windows_x86_64\dev\nvngx_dlss.dll $(OutDir)
 </Command>
     </PostBuildEvent>
@@ -141,6 +142,7 @@ type $(SolutionDir)\patches\FidelityFX-FSR\0000-conditionaly-compile-denoise-cod
 copy $(ProjectDir)\NIS.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\FSR.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\postprocess.hlsl $(OutDir)\shaders
+copy $(ProjectDir)\motionvector.hlsl $(OutDir)\shaders
 copy $(SolutionDir)\external\DLSS\lib\Windows_x86_64\rel\nvngx_dlss.dll $(OutDir)
 </Command>
     </PostBuildEvent>
@@ -200,6 +202,7 @@ copy $(SolutionDir)\external\DLSS\lib\Windows_x86_64\rel\nvngx_dlss.dll $(OutDir
     <ClCompile Include="layer.cpp" />
     <ClCompile Include="log.cpp" />
     <ClCompile Include="menu.cpp" />
+    <ClCompile Include="motionvector.cpp" />
     <ClCompile Include="nis.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -222,6 +225,12 @@ copy $(SolutionDir)\external\DLSS\lib\Windows_x86_64\rel\nvngx_dlss.dll $(OutDir
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="FSR.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </FxCompile>
+    <FxCompile Include="motionvector.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </FxCompile>

@@ -528,6 +528,25 @@ namespace {
                 desc.Texture2DArray.MipLevels = m_info.mipCount;
                 desc.Texture2DArray.MostDetailedMip = D3D11CalcSubresource(0, 0, m_info.mipCount);
 
+                // Convert depth formats to typed.
+                switch (desc.Format) {
+                case DXGI_FORMAT_D32_FLOAT:
+                    desc.Format = DXGI_FORMAT_R32_FLOAT;
+                    break;
+
+                case DXGI_FORMAT_D16_UNORM:
+                    desc.Format = DXGI_FORMAT_R16_UNORM;
+                    break;
+
+                case DXGI_FORMAT_D24_UNORM_S8_UINT:
+                    desc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+                    break;
+
+                case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+                    desc.Format = DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+                    break;
+                }
+
                 ComPtr<ID3D11ShaderResourceView> srv;
                 CHECK_HRCMD(device->CreateShaderResourceView(get(m_texture), &desc, set(srv)));
 
@@ -889,6 +908,9 @@ namespace {
 
             case TextureFormat::R8G8B8A8_UNORM:
                 return (int64_t)DXGI_FORMAT_R8G8B8A8_UNORM;
+
+            case TextureFormat::R16G16_FLOAT:
+                return (int64_t)DXGI_FORMAT_R16G16_FLOAT;
 
             default:
                 throw std::runtime_error("Unknown texture format");

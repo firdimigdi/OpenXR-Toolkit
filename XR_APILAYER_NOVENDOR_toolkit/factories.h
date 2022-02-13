@@ -86,6 +86,8 @@ namespace toolkit {
                                                      uint32_t outputWidth,
                                                      uint32_t outputHeight);
 
+        std::shared_ptr<IMotionVectorProcessor> CreateMotionVectorProcessor(std::shared_ptr<IDevice> graphicsDevice);
+
         bool IsDeviceSupportingFP16(std::shared_ptr<IDevice> device);
 
         GpuArchitecture GetGpuArchitecture(UINT VendorId);

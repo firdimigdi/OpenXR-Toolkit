@@ -193,7 +193,13 @@ namespace toolkit {
         };
 
         // A few handy texture formats.
-        enum class TextureFormat { R32G32B32A32_FLOAT, R16G16B16A16_UNORM, R10G10B10A2_UNORM, R8G8B8A8_UNORM };
+        enum class TextureFormat {
+            R32G32B32A32_FLOAT,
+            R16G16B16A16_UNORM,
+            R16G16_FLOAT,
+            R10G10B10A2_UNORM,
+            R8G8B8A8_UNORM,
+        };
 
         // A list of supported GPU Architectures.
         enum class GpuArchitecture { Unknown, AMD, Intel, NVidia };
@@ -568,6 +574,17 @@ namespace toolkit {
                                  int32_t slice = -1) = 0;
         };
 
+        // A Motion Vector processor.
+        struct IMotionVectorProcessor {
+            ~IMotionVectorProcessor() = default;
+
+            virtual void process(const View& lastView,
+                                 const View& currentView,
+                                 std::shared_ptr<ITexture> depth,
+                                 std::shared_ptr<ITexture> output,
+                                 int32_t slice = -1) = 0;
+        };
+
         // A texture post-processor.
         struct IImageProcessor {
             virtual ~IImageProcessor() = default;
@@ -683,6 +700,7 @@ namespace toolkit {
             uint64_t appCpuTimeUs{0};
             uint64_t appGpuTimeUs{0};
             uint64_t endFrameCpuTimeUs{0};
+            uint64_t motionVectorsGpuTimeUs{0};
             uint64_t preProcessorGpuTimeUs{0};
             uint64_t upscalerGpuTimeUs{0};
             uint64_t postProcessorGpuTimeUs{0};

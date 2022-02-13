@@ -644,6 +644,7 @@ namespace {
                     TIMING_STAT("app GPU", appGpuTimeUs);
                     TIMING_STAT("lay CPU", endFrameCpuTimeUs);
                     TIMING_STAT("pre GPU", preProcessorGpuTimeUs);
+                    TIMING_STAT("mv GPU", motionVectorsGpuTimeUs);
                     TIMING_STAT("scl GPU", upscalerGpuTimeUs);
                     TIMING_STAT("pst GPU", postProcessorGpuTimeUs);
                     TIMING_STAT("ovl CPU", overlayCpuTimeUs);

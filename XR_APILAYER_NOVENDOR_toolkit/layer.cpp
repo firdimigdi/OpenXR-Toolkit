@@ -44,6 +44,13 @@ namespace {
     struct SwapchainImages {
         std::vector<std::shared_ptr<graphics::ITexture>> chain;
 
+        // The projection for the most recently submitted frame.
+        graphics::View view[utilities::ViewCount];
+
+        // Optionally computed motion vectors.
+        std::shared_ptr<graphics::ITexture> motionVectors;
+
+        std::shared_ptr<graphics::IGpuTimer> motionVectorsGpuTimer[utilities::ViewCount];
         std::shared_ptr<graphics::IGpuTimer> upscalerGpuTimer[utilities::ViewCount];
         std::shared_ptr<graphics::IGpuTimer> preProcessorGpuTimer[utilities::ViewCount];
         std::shared_ptr<graphics::IGpuTimer> postProcessorGpuTimer[utilities::ViewCount];
@@ -52,6 +59,7 @@ namespace {
     struct SwapchainState {
         std::vector<SwapchainImages> images;
         uint32_t acquiredImageIndex{0};
+        uint32_t lastAcquiredImageIndex{0};
         bool delayedRelease{false};
 
         bool registeredWithFrameAnalyzer{false};
@@ -467,6 +475,7 @@ namespace {
                     m_handTracker->endSession();
                 }
                 m_upscaler.reset();
+                m_motionVectorProcessor.reset();
                 m_preProcessor.reset();
                 m_postProcessor.reset();
                 m_frameAnalyzer.reset();
@@ -546,6 +555,11 @@ namespace {
 
                         // This is redundant (given the useSwapchain conditions) but we do this for correctness.
                         chainCreateInfo.usageFlags |= XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
+                    }
+                } else if (createInfo->usageFlags & XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+                    if (m_motionVectorProcessor) {
+                        // The depth buffer must be sampled for computing motion vectors.
+                        chainCreateInfo.usageFlags |= XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
                     }
                 }
             }
@@ -677,6 +691,22 @@ namespace {
                         images.upscalerGpuTimer[0] = m_graphicsDevice->createTimer();
                         if (createInfo->arraySize > 1) {
                             images.upscalerGpuTimer[1] = m_graphicsDevice->createTimer();
+                        }
+                    }
+
+                    if (m_motionVectorProcessor) {
+                        // Create a texture for the motion vectors.
+                        XrSwapchainCreateInfo motionVectorsCreateInfo = chainCreateInfo;
+                        motionVectorsCreateInfo.usageFlags |= XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+
+                        motionVectorsCreateInfo.format =
+                            m_graphicsDevice->getTextureFormat(graphics::TextureFormat::R16G16_FLOAT);
+                        images.motionVectors = m_graphicsDevice->createTexture(
+                            motionVectorsCreateInfo, fmt::format("Motion vectors swapchain {} TEX2D", i));
+
+                        images.motionVectorsGpuTimer[0] = m_graphicsDevice->createTimer();
+                        if (createInfo->arraySize > 1) {
+                            images.motionVectorsGpuTimer[1] = m_graphicsDevice->createTimer();
                         }
                     }
 
@@ -826,6 +856,7 @@ namespace {
             if (XR_SUCCEEDED(result)) {
                 // Record the index so we know which texture to use in xrEndFrame().
                 if (swapchainIt != m_swapchains.end()) {
+                    swapchainIt->second.lastAcquiredImageIndex = swapchainIt->second.acquiredImageIndex;
                     swapchainIt->second.acquiredImageIndex = *index;
                 }
             }
@@ -1135,6 +1166,7 @@ namespace {
                     m_stats.appGpuTimeUs = 0;
                 }
                 m_stats.endFrameCpuTimeUs /= numFrames;
+                m_stats.motionVectorsGpuTimeUs /= numFrames;
                 m_stats.upscalerGpuTimeUs /= numFrames;
                 m_stats.preProcessorGpuTimeUs /= numFrames;
                 m_stats.postProcessorGpuTimeUs /= numFrames;
@@ -1351,6 +1383,10 @@ namespace {
                             entry = entry->next;
                         }
 
+                        // Record the current projection.
+                        swapchainImages.view[eye].pose = view.pose;
+                        swapchainImages.view[eye].fov = view.fov;
+                        swapchainImages.view[eye].nearFar = nearFar;
                         const bool isDepthInverted = nearFar.Far < nearFar.Near;
 
                         // Now that we know what eye the swapchain is used for, register it.
@@ -1362,6 +1398,23 @@ namespace {
                                 m_frameAnalyzer->registerColorSwapchainImage(image.chain[0], (utilities::Eye)eye);
                             }
                             swapchainState.registeredWithFrameAnalyzer = true;
+                        }
+
+                        // Compute motion vectors.
+                        if (m_motionVectorProcessor && depthBuffer) {
+                            const auto& lastSwapchainImages =
+                                swapchainState.images[swapchainState.lastAcquiredImageIndex];
+
+                            m_stats.motionVectorsGpuTimeUs += swapchainImages.motionVectorsGpuTimer[gpuTimerIndex]->query();
+                            swapchainImages.motionVectorsGpuTimer[gpuTimerIndex]->start();
+
+                            m_motionVectorProcessor->process(lastSwapchainImages.view[eye],
+                                                             swapchainImages.view[eye],
+                                                             depthBuffer,
+                                                             swapchainImages.motionVectors,
+                                                             useVPRT ? eye : -1);
+
+                            swapchainImages.motionVectorsGpuTimer[gpuTimerIndex]->stop();
                         }
 
                         // Insert processing below.
@@ -1602,6 +1655,7 @@ namespace {
         uint32_t m_upscalingFactor{100};
         float m_mipMapBiasForUpscaling{0.f};
 
+        std::shared_ptr<graphics::IMotionVectorProcessor> m_motionVectorProcessor;
         std::shared_ptr<graphics::IImageProcessor> m_preProcessor;
         std::shared_ptr<graphics::IImageProcessor> m_postProcessor;
 
