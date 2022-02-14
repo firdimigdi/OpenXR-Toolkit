@@ -1499,8 +1499,16 @@ namespace {
             m_setRenderTargetEvent = event;
         }
 
+        void registerSetDepthStencilEvent(SetDepthStencilEvent event) override {
+            m_setDepthStencilEvent = event;
+        }
+
         void registerUnsetRenderTargetEvent(UnsetRenderTargetEvent event) override {
             m_unsetRenderTargetEvent = event;
+        }
+
+        void registerUnsetDepthStencilEvent(UnsetDepthStencilEvent event) override {
+            m_unsetDepthStencilEvent = event;
         }
 
         void registerCopyTextureEvent(CopyTextureEvent event) override {
@@ -1540,6 +1548,11 @@ namespace {
                                g_original_ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews);
             DetourMethodAttach(get(m_context),
                                // Method offset is 7 + method index (0-based) for ID3D11DeviceContext.
+                               53,
+                               hooked_ID3D11DeviceContext_ClearDepthStencilView,
+                               g_original_ID3D11DeviceContext_ClearDepthStencilView);
+            DetourMethodAttach(get(m_context),
+                               // Method offset is 7 + method index (0-based) for ID3D11DeviceContext.
                                47,
                                hooked_ID3D11DeviceContext_CopyResource,
                                g_original_ID3D11DeviceContext_CopyResource);
@@ -1566,6 +1579,11 @@ namespace {
                                34,
                                hooked_ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews,
                                g_original_ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews);
+            DetourMethodDetach(get(m_context),
+                               // Method offset is 7 + method index (0-based) for ID3D11DeviceContext.
+                               53,
+                               hooked_ID3D11DeviceContext_ClearDepthStencilView,
+                               g_original_ID3D11DeviceContext_ClearDepthStencilView);
             DetourMethodDetach(get(m_context),
                                // Method offset is 7 + method index (0-based) for ID3D11DeviceContext.
                                47,
@@ -1789,38 +1807,78 @@ namespace {
 
             auto wrappedContext = std::make_shared<D3D11Context>(shared_from_this(), context);
 
-            if (!numViews || !renderTargetViews[0]) {
-                INVOKE_EVENT(unsetRenderTargetEvent, wrappedContext);
-                return;
-            }
-
             {
-                D3D11_RENDER_TARGET_VIEW_DESC desc;
-                renderTargetViews[0]->GetDesc(&desc);
-                if (desc.ViewDimension != D3D11_RTV_DIMENSION_TEXTURE2D &&
-                    desc.ViewDimension != D3D11_RTV_DIMENSION_TEXTURE2DMS &&
-                    desc.ViewDimension != D3D11_RTV_DIMENSION_TEXTURE2DARRAY &&
-                    desc.ViewDimension != D3D11_RTV_DIMENSION_TEXTURE2DMSARRAY) {
+                bool isCandidate = true;
+                if (!numViews || !renderTargetViews[0]) {
+                    isCandidate = false;
+                }
+
+                if (isCandidate) {
+                    D3D11_RENDER_TARGET_VIEW_DESC desc;
+                    renderTargetViews[0]->GetDesc(&desc);
+                    if (desc.ViewDimension != D3D11_RTV_DIMENSION_TEXTURE2D &&
+                        desc.ViewDimension != D3D11_RTV_DIMENSION_TEXTURE2DMS &&
+                        desc.ViewDimension != D3D11_RTV_DIMENSION_TEXTURE2DARRAY &&
+                        desc.ViewDimension != D3D11_RTV_DIMENSION_TEXTURE2DMSARRAY) {
+                        isCandidate = false;
+                    }
+                }
+
+                auto renderTarget = isCandidate ? wrapViewTextureResource(renderTargetViews[0]) : nullptr;
+                if (renderTarget) {
+                    INVOKE_EVENT(setRenderTargetEvent, wrappedContext, renderTarget);
+                } else {
                     INVOKE_EVENT(unsetRenderTargetEvent, wrappedContext);
-                    return;
                 }
             }
+            {
+                bool isCandidate = depthStencilView != nullptr;
+                if (isCandidate) {
+                    D3D11_DEPTH_STENCIL_VIEW_DESC desc;
+                    depthStencilView->GetDesc(&desc);
+                    if (desc.ViewDimension != D3D11_DSV_DIMENSION_TEXTURE2D &&
+                        desc.ViewDimension != D3D11_DSV_DIMENSION_TEXTURE2DMS &&
+                        desc.ViewDimension != D3D11_DSV_DIMENSION_TEXTURE2DARRAY &&
+                        desc.ViewDimension != D3D11_DSV_DIMENSION_TEXTURE2DMSARRAY) {
+                        isCandidate = false;
+                    }
+                }
 
+                auto depthStencil = isCandidate ? wrapViewTextureResource(depthStencilView) : nullptr;
+                if (depthStencil) {
+                    INVOKE_EVENT(setDepthStencilEvent, wrappedContext, depthStencil);
+                } else {
+                    const bool isInverted =
+                        m_invertedDepthStencil.find(depthStencilView) != m_invertedDepthStencil.cend();
+                    INVOKE_EVENT(unsetDepthStencilEvent, wrappedContext, isInverted);
+                }
+            }
+        }
+
+        std::shared_ptr<ITexture> wrapViewTextureResource(ComPtr<ID3D11View> view) {
             ComPtr<ID3D11Resource> resource;
-            renderTargetViews[0]->GetResource(set(resource));
+            view->GetResource(set(resource));
 
             ComPtr<ID3D11Texture2D> texture;
             if (FAILED(resource->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void**>(set(texture))))) {
-                INVOKE_EVENT(unsetRenderTargetEvent, wrappedContext);
-                return;
+                return nullptr;
             }
 
             D3D11_TEXTURE2D_DESC textureDesc;
             texture->GetDesc(&textureDesc);
 
-            auto renderTarget = std::make_shared<D3D11Texture>(
+            return std::make_shared<D3D11Texture>(
                 shared_from_this(), getTextureInfo(textureDesc), textureDesc, get(texture));
-            INVOKE_EVENT(setRenderTargetEvent, wrappedContext, renderTarget);
+        }
+
+        void setDepthInverted(ID3D11DeviceContext* context, ID3D11DepthStencilView* depthStencilView, bool isInverted) {
+            if (isInverted) {
+                m_invertedDepthStencil.insert(depthStencilView);
+            } else {
+                m_invertedDepthStencil.erase(depthStencilView);
+            }
+
+            // TODO: Must invoke unsetDepthStencil eventually!
         }
 
         void onCopyResource(ID3D11DeviceContext* context,
@@ -1917,7 +1975,7 @@ namespace {
                     if (needBiasing) {
                         // Bias the LOD.
                         desc.MipLODBias += m_mipMapBias;
-                        
+
                         // Allow negative LOD.
                         desc.MinLOD -= std::ceilf(m_mipMapBias);
 
@@ -1968,8 +2026,11 @@ namespace {
         mutable uint32_t m_numBiasedSamplersThisFrame{0};
 
         SetRenderTargetEvent m_setRenderTargetEvent;
+        SetDepthStencilEvent m_setDepthStencilEvent;
         UnsetRenderTargetEvent m_unsetRenderTargetEvent;
+        UnsetDepthStencilEvent m_unsetDepthStencilEvent;
         CopyTextureEvent m_copyTextureEvent;
+        std::set<ID3D11DepthStencilView*> m_invertedDepthStencil;
         std::atomic<bool> m_blockEvents{false};
 
         mutable std::shared_ptr<IQuadShader> m_currentQuadShader;
@@ -2063,6 +2124,27 @@ namespace {
                                                                                      pUAVInitialCounts);
 
             DebugLog("<-- ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews\n");
+        }
+
+        typedef void (*PFN_ID3D11DeviceContext_ClearDepthStencilView)(
+            ID3D11DeviceContext*, ID3D11DepthStencilView*, UINT, FLOAT, UINT8);
+        static inline PFN_ID3D11DeviceContext_ClearDepthStencilView
+            g_original_ID3D11DeviceContext_ClearDepthStencilView = nullptr;
+        static void hooked_ID3D11DeviceContext_ClearDepthStencilView(ID3D11DeviceContext* context,
+                                                                     ID3D11DepthStencilView* pDepthStencilView,
+                                                                     UINT ClearFlags,
+                                                                     FLOAT Depth,
+                                                                     UINT8 Stencil) {
+            DebugLog("--> ID3D11DeviceContext_ClearDepthStencilView\n");
+
+            assert(g_instance);
+            g_instance->setDepthInverted(context, pDepthStencilView, Depth == 0.0f);
+
+            assert(g_original_ID3D11DeviceContext_ClearDepthStencilView);
+            g_original_ID3D11DeviceContext_ClearDepthStencilView(
+                context, pDepthStencilView, ClearFlags, Depth, Stencil);
+
+            DebugLog("<-- ID3D11DeviceContext_ClearDepthStencilView\n");
         }
 
         typedef void (*PFN_ID3D11DeviceContext_CopyResource)(ID3D11DeviceContext*, ID3D11Resource*, ID3D11Resource*);

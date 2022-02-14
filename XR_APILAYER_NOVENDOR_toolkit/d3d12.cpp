@@ -1814,8 +1814,16 @@ namespace {
             m_setRenderTargetEvent = event;
         }
 
+        void registerSetDepthStencilEvent(SetDepthStencilEvent event) override {
+            m_setDepthStencilEvent = event;
+        }
+
         void registerUnsetRenderTargetEvent(UnsetRenderTargetEvent event) override {
             m_unsetRenderTargetEvent = event;
+        }
+
+        void registerUnsetDepthStencilEvent(UnsetDepthStencilEvent event) override {
+            m_unsetDepthStencilEvent = event;
         }
 
         void registerCopyTextureEvent(CopyTextureEvent event) override {
@@ -2052,28 +2060,66 @@ namespace {
 
             auto wrappedContext = std::make_shared<D3D12Context>(shared_from_this(), context);
 
-            if (!numRenderTargetDescriptors) {
-                INVOKE_EVENT(unsetRenderTargetEvent, wrappedContext);
-                return;
+            {
+                bool isCandidate = true;
+                if (!numRenderTargetDescriptors) {
+                    isCandidate = false;
+                }
+
+                decltype(m_renderTargetResourceDescriptors)::const_iterator it;
+                if (isCandidate) {
+                    it = m_renderTargetResourceDescriptors.find(renderTargetHandles[0]);
+                    if (it == m_renderTargetResourceDescriptors.cend()) {
+                        isCandidate = false;
+                    }
+                }
+
+                if (isCandidate) {
+                    ID3D12Resource* const resource = it->second;
+                    const D3D12_RESOURCE_DESC& resourceDesc = resource->GetDesc();
+
+                    auto renderTarget = std::make_shared<D3D12Texture>(shared_from_this(),
+                                                                       getTextureInfo(resourceDesc),
+                                                                       resourceDesc,
+                                                                       resource,
+                                                                       m_rtvHeap,
+                                                                       m_dsvHeap,
+                                                                       m_rvHeap);
+                    INVOKE_EVENT(setRenderTargetEvent, wrappedContext, renderTarget);
+                } else {
+                    INVOKE_EVENT(unsetRenderTargetEvent, wrappedContext);
+                }
             }
+            {
+                bool isCandidate = true;
+                if (!depthStencilHandle) {
+                    isCandidate = false;
+                }
 
-            auto it = m_renderTargetResourceDescriptors.find(renderTargetHandles[0]);
-            if (it == m_renderTargetResourceDescriptors.cend()) {
-                INVOKE_EVENT(unsetRenderTargetEvent, wrappedContext);
-                return;
+                decltype(m_depthStencilResourceDescriptors)::const_iterator it;
+                if (isCandidate) {
+                    it = m_depthStencilResourceDescriptors.find(*depthStencilHandle);
+                    if (it == m_depthStencilResourceDescriptors.cend()) {
+                        isCandidate = false;
+                    }
+                }
+
+                if (isCandidate) {
+                    ID3D12Resource* const resource = it->second;
+                    const D3D12_RESOURCE_DESC& resourceDesc = resource->GetDesc();
+
+                    auto renderTarget = std::make_shared<D3D12Texture>(shared_from_this(),
+                                                                       getTextureInfo(resourceDesc),
+                                                                       resourceDesc,
+                                                                       resource,
+                                                                       m_rtvHeap,
+                                                                       m_dsvHeap,
+                                                                       m_rvHeap);
+                    INVOKE_EVENT(setDepthStencilEvent, wrappedContext, renderTarget);
+                } else {
+                    INVOKE_EVENT(unsetDepthStencilEvent, wrappedContext, false /* TODO */);
+                }
             }
-
-            ID3D12Resource* const resource = it->second;
-            const D3D12_RESOURCE_DESC& resourceDesc = resource->GetDesc();
-
-            auto renderTarget = std::make_shared<D3D12Texture>(shared_from_this(),
-                                                               getTextureInfo(resourceDesc),
-                                                               resourceDesc,
-                                                               resource,
-                                                               m_rtvHeap,
-                                                               m_dsvHeap,
-                                                               m_rvHeap);
-            INVOKE_EVENT(setRenderTargetEvent, wrappedContext, renderTarget);
         }
 
         void onCopyTexture(ID3D12GraphicsCommandList* context,
@@ -2166,12 +2212,16 @@ namespace {
         ComPtr<ID3D12InfoQueue> m_infoQueue;
 
         SetRenderTargetEvent m_setRenderTargetEvent;
+        SetDepthStencilEvent m_setDepthStencilEvent;
         UnsetRenderTargetEvent m_unsetRenderTargetEvent;
+        UnsetDepthStencilEvent m_unsetDepthStencilEvent;
         CopyTextureEvent m_copyTextureEvent;
         std::atomic<bool> m_blockEvents{false};
 
         std::map<D3D12_CPU_DESCRIPTOR_HANDLE, ID3D12Resource*, decltype(descriptorCompare)>
             m_renderTargetResourceDescriptors{descriptorCompare};
+        std::map<D3D12_CPU_DESCRIPTOR_HANDLE, ID3D12Resource*, decltype(descriptorCompare)>
+            m_depthStencilResourceDescriptors{descriptorCompare};
 
         friend std::shared_ptr<ITexture>
         toolkit::graphics::WrapD3D12Texture(std::shared_ptr<IDevice> device,
@@ -2225,6 +2275,8 @@ namespace {
 
             DebugLog("<-- ID3D12Device_CreateRenderTargetView\n");
         }
+
+        // TODO: Hook CreateDepthStencilView() and ClearDepthSencilView().
 
         typedef void (*PFN_ID3D12GraphicsCommandList_OMSetRenderTargets)(ID3D12GraphicsCommandList*,
                                                                          UINT,

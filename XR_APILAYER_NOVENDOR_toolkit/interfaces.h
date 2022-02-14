@@ -525,8 +525,12 @@ namespace toolkit {
             using SetRenderTargetEvent =
                 std::function<void(std::shared_ptr<IContext>, std::shared_ptr<ITexture> renderTarget)>;
             virtual void registerSetRenderTargetEvent(SetRenderTargetEvent event) = 0;
+            using SetDepthStencilEvent = SetRenderTargetEvent;
+            virtual void registerSetDepthStencilEvent(SetDepthStencilEvent event) = 0;
             using UnsetRenderTargetEvent = std::function<void(std::shared_ptr<IContext>)>;
             virtual void registerUnsetRenderTargetEvent(UnsetRenderTargetEvent event) = 0;
+            using UnsetDepthStencilEvent = std::function<void(std::shared_ptr<IContext>, bool /* isDepthInverted */)>;
+            virtual void registerUnsetDepthStencilEvent(UnsetDepthStencilEvent event) = 0;
             using CopyTextureEvent = std::function<void(std::shared_ptr<IContext> /* context */,
                                                         std::shared_ptr<ITexture> /* source */,
                                                         std::shared_ptr<ITexture> /* destination */,
