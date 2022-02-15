@@ -454,6 +454,10 @@ namespace {
             }
         }
 
+        void copyTo(std::shared_ptr<ITexture> destination) const override {
+            // TODO: Implement this.
+        }
+
         void saveToFile(const std::string& path) const override {
             // TODO: Implement this.
         }

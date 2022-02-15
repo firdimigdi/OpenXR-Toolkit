@@ -346,6 +346,7 @@ namespace toolkit {
             virtual std::shared_ptr<IDepthStencilView> getDepthStencilView(uint32_t slice) const = 0;
 
             virtual void uploadData(const void* buffer, uint32_t rowPitch, int32_t slice = -1) = 0;
+            virtual void copyTo(std::shared_ptr<ITexture> destination) const = 0;
             virtual void saveToFile(const std::string& path) const = 0;
 
             virtual void* getNativePtr() const = 0;
@@ -624,14 +625,20 @@ namespace toolkit {
         struct IFrameAnalyzer {
             virtual ~IFrameAnalyzer() = default;
 
-            virtual void registerColorSwapchainImage(std::shared_ptr<ITexture> source, utilities::Eye eye) = 0;
+            virtual void registerColorSwapchainImage(XrSwapchain swapchain,
+                                                     std::shared_ptr<ITexture> source,
+                                                     utilities::Eye eye) = 0;
+
+            using FinishPassEvent = std::function<void(XrSwapchain, utilities::Eye)>;
+            virtual void registerFinishPassEvent(FinishPassEvent event) = 0;
 
             virtual void resetForFrame() = 0;
             virtual void prepareForEndFrame() = 0;
 
-            virtual void onSetRenderTarget(std::shared_ptr<IContext> context,
-                                           std::shared_ptr<ITexture> renderTarget) = 0;
-            virtual void onUnsetRenderTarget(std::shared_ptr<graphics::IContext> context) = 0;
+            virtual void onSetRenderTarget(std::shared_ptr<ITexture> renderTarget) = 0;
+            virtual void onUnsetRenderTarget() = 0;
+            virtual void onSetDepthStencil(std::shared_ptr<ITexture> depthStencil) = 0;
+            virtual void onUnsetDepthStencil(bool isDepthInverted) = 0;
 
             virtual void onCopyTexture(std::shared_ptr<ITexture> source,
                                        std::shared_ptr<ITexture> destination,
@@ -639,6 +646,8 @@ namespace toolkit {
                                        int destinationSlice = -1) = 0;
 
             virtual std::optional<utilities::Eye> getEyeHint() const = 0;
+            virtual std::pair<std::shared_ptr<ITexture>, bool /* isDepthInverted */>
+            getEyeDepthStencil(utilities::Eye eye) const = 0;
         };
 
         // A Variable Rate Shader (VRS) control implementation.

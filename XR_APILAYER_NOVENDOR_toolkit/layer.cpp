@@ -47,6 +47,11 @@ namespace {
         // The projection for the most recently submitted frame.
         graphics::View view[utilities::ViewCount];
 
+        // Optionally retrieved depth buffer.
+        std::shared_ptr<graphics::ITexture> retrievedDepthBuffer;
+        bool isRetrievedDepthInverted;
+        bool isRetrievedDepthValid;
+
         // Optionally computed motion vectors.
         std::shared_ptr<graphics::ITexture> motionVectors;
 
@@ -389,7 +394,7 @@ namespace {
                             }
 
                             if (m_frameAnalyzer) {
-                                m_frameAnalyzer->onSetRenderTarget(context, renderTarget);
+                                m_frameAnalyzer->onSetRenderTarget(renderTarget);
                                 const auto& eyeHint = m_frameAnalyzer->getEyeHint();
                                 if (eyeHint.has_value()) {
                                     m_stats.hasColorBuffer[(int)eyeHint.value()] = true;
@@ -410,12 +415,33 @@ namespace {
                         }
 
                         if (m_frameAnalyzer) {
-                            m_frameAnalyzer->onUnsetRenderTarget(context);
+                            m_frameAnalyzer->onUnsetRenderTarget();
                         }
                         if (m_variableRateShader) {
                             m_variableRateShader->onUnsetRenderTarget(context);
                         }
                     });
+                    m_graphicsDevice->registerSetDepthStencilEvent(
+                        [&](std::shared_ptr<graphics::IContext> context,
+                            std::shared_ptr<graphics::ITexture> depthStencil) {
+                            if (!m_isInFrame) {
+                                return;
+                            }
+
+                            if (m_frameAnalyzer) {
+                                m_frameAnalyzer->onSetDepthStencil(depthStencil);
+                            }
+                        });
+                    m_graphicsDevice->registerUnsetDepthStencilEvent(
+                        [&](std::shared_ptr<graphics::IContext> context, bool isDepthInverted) {
+                            if (!m_isInFrame) {
+                                return;
+                            }
+
+                            if (m_frameAnalyzer) {
+                                m_frameAnalyzer->onUnsetDepthStencil(isDepthInverted);
+                            }
+                        });
                     m_graphicsDevice->registerCopyTextureEvent([&](std::shared_ptr<graphics::IContext> context,
                                                                    std::shared_ptr<graphics::ITexture> source,
                                                                    std::shared_ptr<graphics::ITexture> destination,
@@ -429,6 +455,38 @@ namespace {
                             m_frameAnalyzer->onCopyTexture(source, destination, sourceSlice, destinationSlice);
                         }
                     });
+
+                    if (m_frameAnalyzer) {
+                        m_frameAnalyzer->registerFinishPassEvent([&](XrSwapchain colorSwapchain, utilities::Eye eye) {
+                            std::shared_ptr<graphics::ITexture> depthStencil;
+                            bool isDepthInverted;
+                            std::tie(depthStencil, isDepthInverted) = m_frameAnalyzer->getEyeDepthStencil(eye);
+
+                            if (!depthStencil) {
+                                return;
+                            };
+
+                            auto& swapchainState = m_swapchains.find(colorSwapchain)->second;
+                            auto& swapchainImage = swapchainState.images[swapchainState.acquiredImageIndex];
+
+                            // We must make a copy, because the application might release or overwrite the texture.
+
+                            // Lazily create a texture copy.
+                            if (!swapchainImage.retrievedDepthBuffer) {
+                                auto info = depthStencil->getInfo();
+                                info.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+
+                                swapchainImage.retrievedDepthBuffer = m_graphicsDevice->createTexture(
+                                    info,
+                                    fmt::format("Recovered Depth Copy {} TEX2D", swapchainState.acquiredImageIndex));
+                            }
+
+                            depthStencil->copyTo(swapchainImage.retrievedDepthBuffer);
+                            swapchainImage.isRetrievedDepthInverted = isDepthInverted;
+                            swapchainImage.isRetrievedDepthValid = true;
+                            m_stats.hasDepthBuffer[(int)eye] = true;
+                        });
+                    }
 
                     m_performanceCounters.appCpuTimer = utilities::CreateCpuTimer();
                     m_performanceCounters.endFrameCpuTimer = utilities::CreateCpuTimer();
@@ -893,8 +951,11 @@ namespace {
             if (XR_SUCCEEDED(result)) {
                 // Record the index so we know which texture to use in xrEndFrame().
                 if (swapchainIt != m_swapchains.end()) {
-                    swapchainIt->second.lastAcquiredImageIndex = swapchainIt->second.acquiredImageIndex;
-                    swapchainIt->second.acquiredImageIndex = *index;
+                    auto& swapchainState = swapchainIt->second;
+
+                    swapchainState.lastAcquiredImageIndex = swapchainIt->second.acquiredImageIndex;
+                    swapchainState.acquiredImageIndex = *index;
+                    swapchainState.images[swapchainState.acquiredImageIndex].isRetrievedDepthValid = false;
                 }
             }
 
@@ -1439,9 +1500,16 @@ namespace {
                         // assume.
                         if (m_frameAnalyzer && !useVPRT && !swapchainState.registeredWithFrameAnalyzer) {
                             for (const auto& image : swapchainState.images) {
-                                m_frameAnalyzer->registerColorSwapchainImage(image.chain[0], (utilities::Eye)eye);
+                                m_frameAnalyzer->registerColorSwapchainImage(
+                                    view.subImage.swapchain, image.chain[0], (utilities::Eye)eye);
                             }
                             swapchainState.registeredWithFrameAnalyzer = true;
+                        }
+
+                        // Try to retrieve the depth buffer if we are going to need it.
+                        if (!depthBuffer && (m_motionVectorProcessor || m_upscaleMode == config::ScalingType::DLSS)) {
+                            depthBuffer = swapchainImages.retrievedDepthBuffer;
+                            isDepthInverted = swapchainImages.isRetrievedDepthInverted;
                         }
 
                         // Compute motion vectors.

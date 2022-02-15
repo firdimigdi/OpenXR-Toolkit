@@ -40,21 +40,32 @@ namespace {
             : m_configManager(configManager), m_device(graphicsDevice) {
         }
 
-        void registerColorSwapchainImage(std::shared_ptr<ITexture> source, Eye eye) override {
-            m_eyeSwapchainImages[(int)eye].insert(source->getNativePtr());
+        void registerColorSwapchainImage(XrSwapchain swapchain, std::shared_ptr<ITexture> source, Eye eye) override {
+            m_eyeSwapchainImages[(int)eye].insert_or_assign(source->getNativePtr(), swapchain);
+        }
+
+        void registerFinishPassEvent(FinishPassEvent event) override {
+            m_finishPassEvent = event;
         }
 
         void resetForFrame() override {
             // Assumes left eye is first in case we won't be able to tell for sure.
             m_eyePrediction = Eye::Left;
             m_isPredictionValid = m_shouldPredictEye;
+
+            for (uint32_t i = 0; i < ViewCount; i++) {
+                m_depthStencilForEye[i].reset();
+            }
         }
 
         void prepareForEndFrame() override {
+            onUnsetRenderTarget();
         }
 
-        void onSetRenderTarget(std::shared_ptr<graphics::IContext> context,
-                               std::shared_ptr<ITexture> renderTarget) override {
+        void onSetRenderTarget(std::shared_ptr<ITexture> renderTarget) override {
+            // Flush previous render target if needed.
+            onUnsetRenderTarget();
+
             if (renderTarget->getInfo().arraySize != 1) {
                 return;
             }
@@ -62,22 +73,60 @@ namespace {
             const void* const nativePtr = renderTarget->getNativePtr();
 
             // Handle when the application uses the swapchain image directly.
-            if (m_eyeSwapchainImages[0].find(nativePtr) != m_eyeSwapchainImages[0].cend()) {
-                DebugLog("Detected setting RTV to left eye\n");
-                m_eyePrediction = Eye::Left;
+            {
+                const auto& it = m_eyeSwapchainImages[0].find(nativePtr);
+                if (it != m_eyeSwapchainImages[0].cend()) {
+                    DebugLog("Detected setting RTV to left eye\n");
+                    m_eyePrediction = Eye::Left;
 
-                // We are confident our prediction is accurate.
-                m_shouldPredictEye = true;
-            } else if (m_eyeSwapchainImages[1].find(nativePtr) != m_eyeSwapchainImages[1].cend()) {
-                DebugLog("Detected setting RTV to right eye\n");
-                m_eyePrediction = Eye::Right;
+                    // We are confident our prediction is accurate.
+                    m_shouldPredictEye = true;
 
-                // We are confident our prediction is accurate.
-                m_shouldPredictEye = true;
+                    m_currentSwapchain = it->second;
+
+                    return;
+                }
+            }
+            {
+                const auto& it = m_eyeSwapchainImages[1].find(nativePtr);
+                if (it != m_eyeSwapchainImages[1].cend()) {
+                    DebugLog("Detected setting RTV to right eye\n");
+                    m_eyePrediction = Eye::Right;
+
+                    // We are confident our prediction is accurate.
+                    m_shouldPredictEye = true;
+
+                    m_currentSwapchain = it->second;
+
+                    return;
+                }
             }
         }
 
-        void onUnsetRenderTarget(std::shared_ptr<graphics::IContext> context) override {
+        void onUnsetRenderTarget() override {
+            if (m_currentSwapchain != XR_NULL_HANDLE) {
+                if (m_isPredictionValid && m_finishPassEvent) {
+                    m_finishPassEvent(m_currentSwapchain, m_eyePrediction);
+                }
+
+                m_currentSwapchain = XR_NULL_HANDLE;
+            }
+        }
+
+        void onSetDepthStencil(std::shared_ptr<ITexture> depthStencil) override {
+            if (!m_isPredictionValid) {
+                return;
+            }
+
+            m_depthStencilForEye[(int)m_eyePrediction] = depthStencil;
+        }
+
+        void onUnsetDepthStencil(bool isDepthInverted) override {
+            if (!m_isPredictionValid || !m_depthStencilForEye[(int)m_eyePrediction]) {
+                return;
+            }
+
+            m_isDepthStencilForEyeInverted[(int)m_eyePrediction] = isDepthInverted;
         }
 
         void onCopyTexture(std::shared_ptr<ITexture> source,
@@ -91,21 +140,37 @@ namespace {
             const void* const nativePtr = destination->getNativePtr();
 
             // Handle when the application copies the texture to the swapchain image mid-pass. Assumes left eye is
-            // always first (hence we only detect changes to switch to right eye). This is what FS2020 does.
-            if (m_eyeSwapchainImages[0].find(nativePtr) != m_eyeSwapchainImages[0].cend()) {
-                DebugLog("Detected copy-out to left eye\n");
+            // always first. This is what FS2020 does.
+            {
+                const auto& it = m_eyeSwapchainImages[0].find(nativePtr);
+                if (it != m_eyeSwapchainImages[0].cend()) {
+                    DebugLog("Detected copy-out to left eye\n");
 
-                // Switch to right eye now.
-                m_eyePrediction = Eye::Right;
+                    // Switch to right eye now.
+                    m_eyePrediction = Eye::Right;
 
-                // We are confident our prediction is accurate.
-                m_shouldPredictEye = true;
+                    // We are confident our prediction is accurate.
+                    m_shouldPredictEye = true;
+
+                    if (m_isPredictionValid && m_finishPassEvent) {
+                        m_finishPassEvent(it->second, Eye::Left);
+                    }
+
+                    return;
+                }
             }
-#ifdef _DEBUG
-            else if (m_eyeSwapchainImages[1].find(nativePtr) != m_eyeSwapchainImages[1].cend()) {
-                DebugLog("Detected copy-out to right eye\n");
+            {
+                const auto& it = m_eyeSwapchainImages[1].find(nativePtr);
+                if (it != m_eyeSwapchainImages[1].cend()) {
+                    DebugLog("Detected copy-out to right eye\n");
+
+                    if (m_isPredictionValid && m_finishPassEvent) {
+                        m_finishPassEvent(it->second, Eye::Right);
+                    }
+
+                    return;
+                }
             }
-#endif
         }
 
         std::optional<Eye> getEyeHint() const override {
@@ -115,15 +180,28 @@ namespace {
             return m_eyePrediction;
         }
 
+        std::pair<std::shared_ptr<ITexture>, bool> getEyeDepthStencil(utilities::Eye eye) const override {
+            if (!m_isPredictionValid) {
+                return std::make_pair(nullptr, false);
+            }
+            return std::make_pair(m_depthStencilForEye[(int)eye], m_isDepthStencilForEyeInverted[(int)eye]);
+        }
+
       private:
         const std::shared_ptr<IConfigManager> m_configManager;
         const std::shared_ptr<IDevice> m_device;
 
-        std::set<const void*> m_eyeSwapchainImages[ViewCount];
+        FinishPassEvent m_finishPassEvent;
+
+        std::map<const void*, XrSwapchain> m_eyeSwapchainImages[ViewCount];
 
         bool m_shouldPredictEye{false};
         bool m_isPredictionValid{false};
         Eye m_eyePrediction;
+
+        XrSwapchain m_currentSwapchain{XR_NULL_HANDLE};
+        std::shared_ptr<ITexture> m_depthStencilForEye[ViewCount];
+        bool m_isDepthStencilForEyeInverted[ViewCount];
     };
 
 } // namespace
