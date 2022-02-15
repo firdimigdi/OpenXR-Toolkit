@@ -1896,7 +1896,7 @@ namespace {
                     if (needBiasing) {
                         // Bias the LOD.
                         desc.MipLODBias += m_mipMapBias;
-                        
+
                         // Allow negative LOD.
                         desc.MinLOD -= std::ceilf(m_mipMapBias);
 
@@ -2111,8 +2111,103 @@ namespace {
         }
     };
 
-    decltype(&D3D11CreateDevice) g_original_D3D11CreateDevice = nullptr;
+    bool g_enableDebugLayer = false;
+    bool g_forceD3D11on12 = false;
+    LUID g_forceD3D11on12AdapterLuid;
 
+    decltype(&D3D11CreateDeviceAndSwapChain) g_original_D3D11CreateDeviceAndSwapChain = nullptr;
+    HRESULT Hooked_D3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter,
+                                                 D3D_DRIVER_TYPE DriverType,
+                                                 HMODULE Software,
+                                                 UINT Flags,
+                                                 const D3D_FEATURE_LEVEL* pFeatureLevels,
+                                                 UINT FeatureLevels,
+                                                 UINT SDKVersion,
+                                                 const DXGI_SWAP_CHAIN_DESC* pSwapChainDesc,
+                                                 IDXGISwapChain** ppSwapChain,
+                                                 ID3D11Device** ppDevice,
+                                                 D3D_FEATURE_LEVEL* pFeatureLevel,
+                                                 ID3D11DeviceContext** ppImmediateContext) {
+        DebugLog("--> D3D11CreateDeviceAndSwapChain\n");
+
+        assert(g_original_D3D11CreateDeviceAndSwapChain);
+
+        if (g_enableDebugLayer) {
+            Log("Creating D3D11 device with D3D11_CREATE_DEVICE_DEBUG flag\n");
+            Flags |= D3D11_CREATE_DEVICE_DEBUG;
+        }
+
+        ComPtr<IDXGIFactory1> factory;
+        CHECK_HRCMD(CreateDXGIFactory1(IID_PPV_ARGS(set(factory))));
+
+        DXGI_ADAPTER_DESC adapterDesc;
+        if (pAdapter) {
+            CHECK_HRCMD(pAdapter->GetDesc(&adapterDesc));
+        }
+
+        HRESULT hr;
+        if (g_forceD3D11on12 &&
+            (!pAdapter || (g_forceD3D11on12AdapterLuid.HighPart == 0 && g_forceD3D11on12AdapterLuid.LowPart == 0) ||
+             !memcmp(&adapterDesc.AdapterLuid, &g_forceD3D11on12AdapterLuid, sizeof(LUID)))) {
+            Log("Creating D3D11on12 device\n");
+
+            // Create the D3D12 device and command queue.
+            ComPtr<ID3D12Device> d3d12Device;
+            if (SUCCEEDED(hr = D3D12CreateDevice(pAdapter, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(set(d3d12Device))))) {
+                ComPtr<ID3D12CommandQueue> d3d12CommandQueue;
+                {
+                    D3D12_COMMAND_QUEUE_DESC desc;
+                    ZeroMemory(&desc, sizeof(desc));
+                    desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+                    desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+                    CHECK_HRCMD(d3d12Device->CreateCommandQueue(&desc, IID_PPV_ARGS(set(d3d12CommandQueue))));
+                }
+
+                // Create the D3D11on12 device and context.
+                if (SUCCEEDED(hr = D3D11On12CreateDevice(get(d3d12Device),
+                                                         D3D11_CREATE_DEVICE_SINGLETHREADED,
+                                                         pFeatureLevels,
+                                                         FeatureLevels,
+                                                         reinterpret_cast<IUnknown**>(d3d12CommandQueue.GetAddressOf()),
+                                                         1,
+                                                         0,
+                                                         ppDevice,
+                                                         ppImmediateContext,
+                                                         pFeatureLevel))) {
+                    // Associate the D3D12 objects so we can retrieve them later.
+                    (*ppDevice)->SetPrivateDataInterface(__uuidof(ID3D12Device), get(d3d12Device));
+                    (*ppDevice)->SetPrivateDataInterface(__uuidof(ID3D12CommandQueue), get(d3d12CommandQueue));
+
+                    if (pSwapChainDesc && ppSwapChain) {
+                        if (FAILED(hr = factory->CreateSwapChain(
+                                       *ppDevice, (DXGI_SWAP_CHAIN_DESC*)pSwapChainDesc, ppSwapChain))) {
+                            (*ppImmediateContext)->Release();
+                            (*ppDevice)->Release();
+                        }
+                    }
+                }
+            }
+        } else {
+            hr = g_original_D3D11CreateDeviceAndSwapChain(pAdapter,
+                                                          DriverType,
+                                                          Software,
+                                                          Flags,
+                                                          pFeatureLevels,
+                                                          FeatureLevels,
+                                                          SDKVersion,
+                                                          pSwapChainDesc,
+                                                          ppSwapChain,
+                                                          ppDevice,
+                                                          pFeatureLevel,
+                                                          ppImmediateContext);
+        }
+
+        DebugLog("<-- D3D11CreateDeviceAndSwapChain %d\n", hr);
+
+        return hr;
+    }
+
+    decltype(&D3D11CreateDevice) g_original_D3D11CreateDevice = nullptr;
     HRESULT Hooked_D3D11CreateDevice(IDXGIAdapter* pAdapter,
                                      D3D_DRIVER_TYPE DriverType,
                                      HMODULE Software,
@@ -2123,31 +2218,58 @@ namespace {
                                      ID3D11Device** ppDevice,
                                      D3D_FEATURE_LEVEL* pFeatureLevel,
                                      ID3D11DeviceContext** ppImmediateContext) {
+        DebugLog("--> D3D11CreateDevice\n");
+
         assert(g_original_D3D11CreateDevice);
-        Log("Creating D3D11 device with D3D11_CREATE_DEVICE_DEBUG flag\n");
-        return g_original_D3D11CreateDevice(pAdapter,
-                                            DriverType,
-                                            Software,
-                                            Flags | D3D11_CREATE_DEVICE_DEBUG,
-                                            pFeatureLevels,
-                                            FeatureLevels,
-                                            SDKVersion,
-                                            ppDevice,
-                                            pFeatureLevel,
-                                            ppImmediateContext);
+
+        // The actual implementation of D3D11CreateDevice() seems to call D3D11CreateDeviceAndSwapChain(). In order to
+        // avoid recursion, we follow the same pattern.
+        const HRESULT hr = Hooked_D3D11CreateDeviceAndSwapChain(pAdapter,
+                                                                DriverType,
+                                                                Software,
+                                                                Flags,
+                                                                pFeatureLevels,
+                                                                FeatureLevels,
+                                                                SDKVersion,
+                                                                nullptr,
+                                                                nullptr,
+                                                                ppDevice,
+                                                                pFeatureLevel,
+                                                                ppImmediateContext);
+
+        DebugLog("<-- D3D11CreateDevice %d\n", hr);
+
+        return hr;
     }
 
 } // namespace
 
 namespace toolkit::graphics {
 
-    void HookForD3D11DebugLayer() {
+    void HookD3D11CreateDevice() {
         DetourDllAttach("d3d11.dll", "D3D11CreateDevice", Hooked_D3D11CreateDevice, g_original_D3D11CreateDevice);
+        DetourDllAttach("d3d11.dll",
+                        "D3D11CreateDeviceAndSwapChain",
+                        Hooked_D3D11CreateDeviceAndSwapChain,
+                        g_original_D3D11CreateDeviceAndSwapChain);
     }
 
-    void UnhookForD3D11DebugLayer() {
+    void UnhookD3D11CreateDevice() {
         DetourDllDetach("d3d11.dll", "D3D11CreateDevice", Hooked_D3D11CreateDevice, g_original_D3D11CreateDevice);
+        DetourDllDetach("d3d11.dll",
+                        "D3D11CreateDeviceAndSwapChain",
+                        Hooked_D3D11CreateDeviceAndSwapChain,
+                        g_original_D3D11CreateDeviceAndSwapChain);
     }
+
+    void SetEnableD3D11DebugLayer(bool enable) {
+        g_enableDebugLayer = enable;
+    }
+
+    void SetForceD3D11on12(bool enable, LUID adapterLuid) {
+        g_forceD3D11on12 = enable;
+        g_forceD3D11on12AdapterLuid = adapterLuid;
+    };
 
     std::shared_ptr<IDevice> WrapD3D11Device(ID3D11Device* device,
                                              std::shared_ptr<config::IConfigManager> configManager) {
@@ -2156,7 +2278,7 @@ namespace toolkit::graphics {
 
     std::shared_ptr<IDevice> WrapD3D11TextDevice(ID3D11Device* device,
                                                  std::shared_ptr<config::IConfigManager> configManager) {
-        return std::make_shared<D3D11Device>(device, configManager, true);
+        return std::make_shared<D3D11Device>(device, configManager, true /* textOnly */);
     }
 
     std::shared_ptr<ITexture> WrapD3D11Texture(std::shared_ptr<IDevice> device,

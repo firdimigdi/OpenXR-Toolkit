@@ -366,9 +366,17 @@ namespace {
                 doD3D11Capture(context, renderTarget, eyeHint);
 #endif
             } else if (m_device->getApi() == Api::D3D12) {
+                // Detect D3D11on12 contexts, and fallback to the global context if needed.
+                auto nativeContext =
+                    context->getApi() == Api::D3D12 ? context->getNative<D3D12>() : m_device->getContext<D3D12>();
+
+                if (context->getApi() == Api::D3D11) {
+                    context->getNative<D3D11>()->Flush();
+                }
+
                 ComPtr<ID3D12GraphicsCommandList5> vrsCommandList;
-                if (FAILED(context->getNative<D3D12>()->QueryInterface(
-                        __uuidof(ID3D12GraphicsCommandList5), reinterpret_cast<void**>(set(vrsCommandList))))) {
+                if (FAILED(nativeContext->QueryInterface(__uuidof(ID3D12GraphicsCommandList5),
+                                                         reinterpret_cast<void**>(set(vrsCommandList))))) {
                     DebugLog("VRS: failed to query ID3D12GraphicsCommandList5\n");
                     return false;
                 }
@@ -382,6 +390,11 @@ namespace {
                     eyeHint.has_value() ? m_shadingRateMask[(uint32_t)eyeHint.value()] : m_shadingRateMaskGeneric;
 
                 vrsCommandList->RSSetShadingRateImage(mask->getNative<D3D12>());
+
+                // When using D3D11on12, force executing the command list now.
+                if (context->getApi() != Api::D3D12) {
+                    m_device->flushContext(true);
+                }
             } else {
                 throw std::runtime_error("Unsupported graphics runtime");
             }
@@ -408,7 +421,13 @@ namespace {
                 doD3D11Capture(context /* post */);
 #endif
             } else if (m_device->getApi() == Api::D3D12) {
-                auto nativeContext = context ? context->getNative<D3D12>() : m_device->getContext<D3D12>();
+                // Detect D3D11on12 contexts, and fallback to the global context if needed.
+                auto nativeContext = (context && context->getApi() == Api::D3D12) ? context->getNative<D3D12>()
+                                                                                  : m_device->getContext<D3D12>();
+
+                if (context && context->getApi() == Api::D3D11) {
+                    context->getNative<D3D11>()->Flush();
+                }
 
                 ComPtr<ID3D12GraphicsCommandList5> vrsCommandList;
                 if (FAILED(nativeContext->QueryInterface(__uuidof(ID3D12GraphicsCommandList5),
@@ -418,6 +437,11 @@ namespace {
                 }
 
                 vrsCommandList->RSSetShadingRateImage(nullptr);
+
+                // When using D3D11on12, force executing the command list now.
+                if (context && context->getApi() != Api::D3D12) {
+                    m_device->flushContext();
+                }
             } else {
                 throw std::runtime_error("Unsupported graphics runtime");
             }

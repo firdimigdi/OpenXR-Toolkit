@@ -56,8 +56,11 @@ namespace toolkit {
 
     namespace graphics {
 
-        void HookForD3D11DebugLayer();
-        void UnhookForD3D11DebugLayer();
+        void HookD3D11CreateDevice();
+        void UnhookD3D11CreateDevice();
+        void SetEnableD3D11DebugLayer(bool enable);
+        void SetForceD3D11on12(bool enable, LUID adapterLuid = {0, 0});
+
         std::shared_ptr<IDevice> WrapD3D11Device(ID3D11Device* device,
                                                  std::shared_ptr<config::IConfigManager> configManager);
         std::shared_ptr<IDevice> WrapD3D11TextDevice(ID3D11Device* device,
@@ -71,6 +74,8 @@ namespace toolkit {
         std::shared_ptr<IDevice> WrapD3D12Device(ID3D12Device* device,
                                                  ID3D12CommandQueue* queue,
                                                  std::shared_ptr<config::IConfigManager> configManager);
+        std::shared_ptr<IDevice> WrapPromotedD3D11on12Device(ID3D11Device* device,
+                                                             std::shared_ptr<config::IConfigManager> configManager);
         std::shared_ptr<ITexture> WrapD3D12Texture(std::shared_ptr<IDevice> device,
                                                    const XrSwapchainCreateInfo& info,
                                                    ID3D12Resource* texture,

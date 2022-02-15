@@ -799,7 +799,8 @@ namespace {
       public:
         D3D12Device(ID3D12Device* device,
                     ID3D12CommandQueue* queue,
-                    std::shared_ptr<config::IConfigManager> configManager)
+                    std::shared_ptr<config::IConfigManager> configManager,
+                    bool vrsOnly = false)
             : m_device(device), m_queue(queue), m_gpuArchitecture(GpuArchitecture::Unknown) {
             {
                 ComPtr<IDXGIFactory1> dxgiFactory;
@@ -822,15 +823,17 @@ namespace {
 
                         m_gpuArchitecture = graphics::GetGpuArchitecture(adapterDesc.VendorId);
 
-                        // Log the adapter name to help debugging customer issues.
-                        Log("Using Direct3D 12 on adapter: %s\n", m_deviceName.c_str());
+                        if (!vrsOnly) {
+                            // Log the adapter name to help debugging customer issues.
+                            Log("Using Direct3D 12 on adapter: %s\n", m_deviceName.c_str());
+                        }
                         break;
                     }
                 }
             }
 
             // Initialize Debug layer logging.
-            if (configManager->getValue("debug_layer")) {
+            if (!vrsOnly && configManager->getValue("debug_layer")) {
                 if (SUCCEEDED(m_device->QueryInterface(__uuidof(ID3D12InfoQueue),
                                                        reinterpret_cast<void**>(set(m_infoQueue))))) {
                     Log("D3D12 Debug layer is enabled\n");
@@ -904,7 +907,7 @@ namespace {
 
             // Initialize the D3D11on12 interop device that we need for text rendering.
             // We use the text rendering primitives from the D3D11Device implmenentation (d3d11.cpp).
-            {
+            if (!vrsOnly) {
                 ComPtr<ID3D11Device> textDevice;
                 D3D_FEATURE_LEVEL featureLevel = {D3D_FEATURE_LEVEL_11_1};
                 CHECK_HRCMD(D3D11On12CreateDevice(device,
@@ -925,9 +928,11 @@ namespace {
 
             CHECK_HRCMD(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(set(m_fence))));
 
-            initializeInterceptor();
-            initializeShadingResources();
-            initializeMeshResources();
+            if (!vrsOnly) {
+                initializeInterceptor();
+                initializeShadingResources();
+                initializeMeshResources();
+            }
         }
 
         ~D3D12Device() override {
@@ -2287,6 +2292,25 @@ namespace toolkit::graphics {
                                              ID3D12CommandQueue* queue,
                                              std::shared_ptr<config::IConfigManager> configManager) {
         return std::make_shared<D3D12Device>(device, queue, configManager);
+    }
+
+    std::shared_ptr<IDevice> WrapPromotedD3D11on12Device(ID3D11Device* device,
+                                                         std::shared_ptr<config::IConfigManager> configManager) {
+        ComPtr<ID3D12Device> d3d12Device;
+        ComPtr<ID3D12CommandQueue> d3d12CommandQueue;
+
+        // See if the device can be promoted.
+        UINT nDataSize = sizeof(ID3D12Device*);
+        if (FAILED(device->GetPrivateData(__uuidof(ID3D12Device), &nDataSize, set(d3d12Device)))) {
+            return nullptr;
+        }
+        nDataSize = sizeof(ID3D12CommandQueue*);
+        if (FAILED(device->GetPrivateData(__uuidof(ID3D12CommandQueue), &nDataSize, set(d3d12CommandQueue)))) {
+            return nullptr;
+        }
+
+        return std::make_shared<D3D12Device>(
+            get(d3d12Device), get(d3d12CommandQueue), configManager, true /* vrsOnly */);
     }
 
     std::shared_ptr<ITexture> WrapD3D12Texture(std::shared_ptr<IDevice> device,

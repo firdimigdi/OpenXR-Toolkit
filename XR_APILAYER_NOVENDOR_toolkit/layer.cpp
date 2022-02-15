@@ -90,7 +90,7 @@ namespace {
 
             m_configManager = config::CreateConfigManager(createInfo->applicationInfo.applicationName);
 
-            // Hook to enable Direct3D 11 Debug layer on request.
+            // Enable Direct3D Debug layer on request.
             m_configManager->setDefault("debug_layer",
 #ifdef _DEBUG
                                         1
@@ -99,8 +99,11 @@ namespace {
 #endif
             );
             if (m_configManager->getValue("debug_layer")) {
-                graphics::HookForD3D11DebugLayer();
+                graphics::SetEnableD3D11DebugLayer(true);
                 graphics::EnableD3D12DebugLayer();
+            } else {
+                graphics::SetEnableD3D11DebugLayer(false);
+                // No undo for D3D12.
             }
 
             // Check what keys to use.
@@ -127,10 +130,6 @@ namespace {
             }
 
             return XR_SUCCESS;
-        }
-
-        ~OpenXrLayer() override {
-            graphics::UnhookForD3D11DebugLayer();
         }
 
         XrResult xrGetSystem(XrInstance instance, const XrSystemGetInfo* getInfo, XrSystemId* systemId) override {
@@ -222,6 +221,25 @@ namespace {
                     m_configManager->deleteValue("icd");
                 }
 
+                // Handle forcing D3D11on12.
+                m_configManager->setDefault("force_11on12", 0);
+                if (m_configManager->getValue("force_11on12")) {
+                    // TODO: This should be auto-generated in xrCreateInstance(), but today our generator only looks at
+                    // core spec.
+                    if (XR_SUCCEEDED(xrGetInstanceProcAddr(
+                            GetXrInstance(),
+                            "xrGetD3D11GraphicsRequirementsKHR",
+                            reinterpret_cast<PFN_xrVoidFunction*>(&xrGetD3D11GraphicsRequirementsKHR)))) {
+                        XrGraphicsRequirementsD3D11KHR d3d11Requirements{XR_TYPE_GRAPHICS_REQUIREMENTS_D3D11_KHR,
+                                                                         nullptr};
+                        if (XR_SUCCEEDED(xrGetD3D11GraphicsRequirementsKHR(instance, *systemId, &d3d11Requirements))) {
+                            graphics::SetForceD3D11on12(true, d3d11Requirements.adapterLuid);
+                        }
+                    }
+                } else {
+                    graphics::SetForceD3D11on12(false);
+                }
+
                 // Remember the XrSystemId to use.
                 m_vrSystemId = *systemId;
             }
@@ -294,11 +312,21 @@ namespace {
                         const XrGraphicsBindingD3D11KHR* d3dBindings =
                             reinterpret_cast<const XrGraphicsBindingD3D11KHR*>(entry);
                         m_graphicsDevice = graphics::WrapD3D11Device(d3dBindings->device, m_configManager);
+
+                        // When forcing D3D11on12, try to get the D3D12 device.
+                        auto promotedGraphicsDevice =
+                            graphics::WrapPromotedD3D11on12Device(d3dBindings->device, m_configManager);
+                        if (promotedGraphicsDevice) {
+                            Log("Using D3D11on12 device\n");
+                            m_graphicsDeviceForVRS = promotedGraphicsDevice;
+                        } else {
+                            m_graphicsDeviceForVRS = m_graphicsDevice;
+                        }
                         break;
                     } else if (entry->type == XR_TYPE_GRAPHICS_BINDING_D3D12_KHR) {
                         const XrGraphicsBindingD3D12KHR* d3dBindings =
                             reinterpret_cast<const XrGraphicsBindingD3D12KHR*>(entry);
-                        m_graphicsDevice =
+                        m_graphicsDevice = m_graphicsDeviceForVRS =
                             graphics::WrapD3D12Device(d3dBindings->device, d3dBindings->queue, m_configManager);
                         break;
                     }
@@ -349,8 +377,8 @@ namespace {
                     if (!m_configManager->getValue("disable_frame_analyzer")) {
                         m_frameAnalyzer = graphics::CreateFrameAnalyzer(m_configManager, m_graphicsDevice);
                     }
-                    m_variableRateShader =
-                        graphics::CreateVariableRateShader(m_configManager, m_graphicsDevice, inputWidth, inputHeight);
+                    m_variableRateShader = graphics::CreateVariableRateShader(
+                        m_configManager, m_graphicsDeviceForVRS, inputWidth, inputHeight);
 
                     // Register intercepted events.
                     m_graphicsDevice->registerSetRenderTargetEvent(
@@ -486,6 +514,7 @@ namespace {
                 if (m_graphicsDevice) {
                     m_graphicsDevice->shutdown();
                 }
+                m_graphicsDeviceForVRS.reset();
                 m_graphicsDevice.reset();
                 m_vrSession = XR_NULL_HANDLE;
                 // A good check to ensure there are no resources leak is to confirm that the graphics device is
@@ -493,8 +522,8 @@ namespace {
                 // eg:
                 // 2022-01-01 17:15:35 -0800: D3D11Device destroyed
                 // 2022-01-01 17:15:35 -0800: Session destroyed
-                // If the order is reversed or the Device is destructed missing, then it means that we are not cleaning
-                // up the resources properly.
+                // If the order is reversed or the Device is destructed missing, then it means that we are not
+                // cleaning up the resources properly.
                 Log("Session destroyed\n");
             }
 
@@ -543,8 +572,8 @@ namespace {
                     }
 
                     if (m_postProcessor) {
-                        // We no longer need the runtime swapchain to have this flag since we will use an intermediate
-                        // texture.
+                        // We no longer need the runtime swapchain to have this flag since we will use an
+                        // intermediate texture.
                         chainCreateInfo.usageFlags &= ~XR_SWAPCHAIN_USAGE_UNORDERED_ACCESS_BIT;
 
                         // This is redundant (given the useSwapchain conditions) but we do this for correctness.
@@ -1372,8 +1401,8 @@ namespace {
 
                         // Now that we know what eye the swapchain is used for, register it.
                         // TODO: We always assume that if VPRT is used, left eye is texture 0 and right eye is
-                        // texture 1. I'm sure this holds in like 99% of the applications, but still not very clean to
-                        // assume.
+                        // texture 1. I'm sure this holds in like 99% of the applications, but still not very clean
+                        // to assume.
                         if (m_frameAnalyzer && !useVPRT && !swapchainState.registeredWithFrameAnalyzer) {
                             for (const auto& image : swapchainState.images) {
                                 m_frameAnalyzer->registerColorSwapchainImage(image.chain[0], (utilities::Eye)eye);
@@ -1612,6 +1641,7 @@ namespace {
         std::shared_ptr<config::IConfigManager> m_configManager;
 
         std::shared_ptr<graphics::IDevice> m_graphicsDevice;
+        std::shared_ptr<graphics::IDevice> m_graphicsDeviceForVRS;
         std::map<XrSwapchain, SwapchainState> m_swapchains;
 
         std::shared_ptr<graphics::IImageProcessor> m_preProcessor;
@@ -1649,6 +1679,7 @@ namespace {
 
         // TODO: These should be auto-generated and accessible via OpenXrApi.
         PFN_xrConvertWin32PerformanceCounterToTimeKHR xrConvertWin32PerformanceCounterToTimeKHR{nullptr};
+        PFN_xrGetD3D11GraphicsRequirementsKHR xrGetD3D11GraphicsRequirementsKHR{nullptr};
     };
 
     std::unique_ptr<OpenXrLayer> g_instance = nullptr;
@@ -1667,4 +1698,37 @@ namespace toolkit {
         g_instance.reset();
     }
 
+    namespace log {
+        extern std::ofstream logStream;
+    }
 } // namespace toolkit
+
+extern "C" {
+
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
+    switch (fdwReason) {
+    case DLL_PROCESS_ATTACH:
+        // clang-format off
+        {
+            std::string logFile = (localAppData / "logs" / (LayerName + ".log")).string();
+            logStream.open(logFile, std::ios_base::ate);
+        }
+        // clang-format on
+        graphics::HookD3D11CreateDevice();
+        graphics::SetForceD3D11on12(true);
+        break;
+
+    case DLL_PROCESS_DETACH:
+        graphics::UnhookD3D11CreateDevice();
+        break;
+
+    case DLL_THREAD_ATTACH:
+        break;
+
+    case DLL_THREAD_DETACH:
+        break;
+    }
+    return TRUE;
+}
+
+}
