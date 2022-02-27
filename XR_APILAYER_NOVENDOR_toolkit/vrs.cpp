@@ -374,6 +374,8 @@ namespace {
                     context->getNative<D3D11>()->Flush();
                 }
 
+                PIXSetMarker(nativeContext, PIX_COLOR_INDEX(0), "Enable VRS");
+
                 ComPtr<ID3D12GraphicsCommandList5> vrsCommandList;
                 if (FAILED(nativeContext->QueryInterface(__uuidof(ID3D12GraphicsCommandList5),
                                                          reinterpret_cast<void**>(set(vrsCommandList))))) {

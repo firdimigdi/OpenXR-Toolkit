@@ -117,3 +117,6 @@ T* detach(ComPtr<T>& object) {
 
 // NVAPI SDK.
 #include <nvapi.h>
+
+// WinPixEventRuntime
+#include <pix3.h>
