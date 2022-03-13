@@ -216,6 +216,17 @@ namespace {
                 m_configManager->setDefault(config::SettingSaturationBlue, 500);
                 m_configManager->setEnumDefault(config::SettingScreenshotFileFormat, config::ScreenshotFileFormat::PNG);
 
+                m_configManager->setDefault("fov_up", 100);
+                m_configManager->setDefault("fov_down", 100);
+                m_configManager->setDefault("fov_l_l", 100);
+                m_configManager->setDefault("fov_l_r", 100);
+                m_configManager->setDefault("fov_r_l", 100);
+                m_configManager->setDefault("fov_r_r", 100);
+                m_configManager->setDefault("fov_override_thread", 0); // Both
+                m_configManager->setDefault("fov_restore", 0);
+                m_configManager->setDefault("eye_locate_swap", 0);
+                m_configManager->setDefault("eye_endframe_swap", 0);
+
                 // Workaround: the first versions of the toolkit used a different representation for the world scale.
                 // Migrate the value upon first run.
                 m_configManager->setDefault("icd", 0);
@@ -1021,22 +1032,53 @@ namespace {
                     m_stats.icd = ipd;
                 }
 
-                // Override the FOV if requested.
-                const int fovOverride = m_configManager->getValue(config::SettingFOV);
-                if (fovOverride != 100) {
-                    const float multiplier = fovOverride / 100.0f;
-
-                    views[0].fov.angleUp *= multiplier;
-                    views[0].fov.angleDown *= multiplier;
-                    views[0].fov.angleLeft *= multiplier;
-                    views[0].fov.angleRight *= multiplier;
-                    views[1].fov.angleUp *= multiplier;
-                    views[1].fov.angleDown *= multiplier;
-                    views[1].fov.angleLeft *= multiplier;
-                    views[1].fov.angleRight *= multiplier;
+                // Override the FOV.
+                bool needOverride = true;
+                switch (m_configManager->getValue("fov_override_thread")) {
+                case 1: // Thread1
+                    needOverride = m_waitFrameTid == GetCurrentThreadId();
+                    break;
+                case 2: // Thread2
+                    needOverride = m_beginFrameTid == GetCurrentThreadId();
+                    break;
                 }
 
-                m_stats.totalFov = -views[0].fov.angleLeft + views[1].fov.angleRight;
+                if (needOverride) {
+                    views[0].fov.angleUp *= m_configManager->getValue("fov_up") / 100.0f;
+                    views[0].fov.angleDown *= m_configManager->getValue("fov_down") / 100.0f;
+                    views[0].fov.angleLeft *= m_configManager->getValue("fov_l_l") / 100.0f;
+                    views[0].fov.angleRight *= m_configManager->getValue("fov_l_r") / 100.0f;
+                    views[1].fov.angleUp *= m_configManager->getValue("fov_up") / 100.0f;
+                    views[1].fov.angleDown *= m_configManager->getValue("fov_down") / 100.0f;
+                    views[1].fov.angleLeft *= m_configManager->getValue("fov_r_l") / 100.0f;
+                    views[1].fov.angleRight *= m_configManager->getValue("fov_r_r") / 100.0f;
+                }
+
+                m_stats.fovL[0] = views[0].fov.angleUp;
+                m_stats.fovL[1] = views[0].fov.angleDown;
+                m_stats.fovL[2] = views[0].fov.angleLeft;
+                m_stats.fovL[3] = views[0].fov.angleRight;
+                m_stats.fovR[0] = views[1].fov.angleUp;
+                m_stats.fovR[1] = views[1].fov.angleDown;
+                m_stats.fovR[2] = views[1].fov.angleLeft;
+                m_stats.fovR[3] = views[1].fov.angleRight;
+
+                bool needSwap = false;
+                switch (m_configManager->getValue("eye_locate_swap")) {
+                case 1: // Thread1
+                    needSwap = m_waitFrameTid == GetCurrentThreadId();
+                    break;
+                case 2: // Thread2
+                    needSwap = m_beginFrameTid == GetCurrentThreadId();
+                    break;
+                case 3: // Both
+                    needSwap = true;
+                    break;
+                }
+
+                if (needSwap) {
+                    std::swap(views[0], views[1]);
+                }
             }
 
             return result;
@@ -1148,6 +1190,7 @@ namespace {
 
                 // Record the predicted display time.
                 m_waitedFrameTime = frameState->predictedDisplayTime;
+                m_waitFrameTid = GetCurrentThreadId();
             }
 
             return result;
@@ -1158,6 +1201,7 @@ namespace {
             if (XR_SUCCEEDED(result) && isVrSession(session)) {
                 // Record the predicted display time.
                 m_begunFrameTime = m_waitedFrameTime;
+                m_beginFrameTid = GetCurrentThreadId();
                 m_isInFrame = true;
 
                 if (m_graphicsDevice) {
@@ -1255,7 +1299,7 @@ namespace {
             }
         }
 
-        void takeScreenshot(std::shared_ptr<graphics::ITexture> texture) const {
+        void takeScreenshot(std::shared_ptr<graphics::ITexture> texture, const std::string& suffix) const {
             SYSTEMTIME st;
             ::GetLocalTime(&st);
 
@@ -1271,6 +1315,8 @@ namespace {
                 parameters << upscaleName << m_upscalingFactor << "_"
                            << m_configManager->getValue(config::SettingSharpness);
             }
+
+            parameters << "_" << suffix;
 
             const auto fileFormat =
                 m_configManager->getEnumValue<config::ScreenshotFileFormat>(config::SettingScreenshotFileFormat);
@@ -1514,21 +1560,13 @@ namespace {
                         correctedProjectionViews[eye].subImage.imageRect.extent.width = m_displayWidth;
                         correctedProjectionViews[eye].subImage.imageRect.extent.height = m_displayHeight;
 
-                        // Patch the FOV when set above 100%.
-                        const int fov = m_configManager->getValue(config::SettingFOV);
-                        if (fov > 100) {
-                            const float multiplier = 100.0f / fov;
-
-                            correctedProjectionViews[eye].fov.angleUp *= multiplier;
-                            correctedProjectionViews[eye].fov.angleDown *= multiplier;
-                            correctedProjectionViews[eye].fov.angleLeft *= multiplier;
-                            correctedProjectionViews[eye].fov.angleRight *= multiplier;
-                        }
-
                         // Patch the eye poses.
                         const int cantOverride = m_configManager->getValue("canting");
                         if (cantOverride != 0) {
                             correctedProjectionViews[eye].pose = m_posesForFrame[eye].pose;
+                        }
+                        if (m_configManager->getValue("fov_restore")) {
+                            correctedProjectionViews[eye].fov = m_posesForFrame[eye].fov;
                         }
 
                         viewsForOverlay[eye].pose = correctedProjectionViews[eye].pose;
@@ -1537,6 +1575,13 @@ namespace {
                     }
 
                     spaceForOverlay = proj->space;
+
+                    if (m_configManager->getValue("eye_endframe_swap")) {
+                        std::swap(correctedProjectionViews[0], correctedProjectionViews[1]);
+                        std::swap(viewsForOverlay[0], viewsForOverlay[1]);
+                        std::swap(textureForOverlay[0], textureForOverlay[1]);
+                        std::swap(depthForOverlay[0], depthForOverlay[1]);
+                    }
 
                     correctedProjectionLayer->views = correctedProjectionViews;
                     correctedLayers.push_back(
@@ -1616,7 +1661,8 @@ namespace {
             if (textureForOverlay[0] && requestScreenshot) {
                 // TODO: this is capturing frame N-3
                 // review the command queues/lists and context flush
-                takeScreenshot(textureForOverlay[0]);
+                takeScreenshot(textureForOverlay[0], "L");
+                takeScreenshot(textureForOverlay[1], "R");
 
 #ifdef _DEBUG
                 if (m_variableRateShader) {
@@ -1688,6 +1734,8 @@ namespace {
         XrTime m_waitedFrameTime;
         XrTime m_begunFrameTime;
         bool m_isInFrame{false};
+        DWORD m_waitFrameTid{0};
+        DWORD m_beginFrameTid{0};
         bool m_sendInterationProfileEvent{false};
         XrSpace m_viewSpace{XR_NULL_HANDLE};
         bool m_needCalibrateEyeProjections{true};

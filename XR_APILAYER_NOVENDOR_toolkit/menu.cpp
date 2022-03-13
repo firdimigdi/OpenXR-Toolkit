@@ -1030,10 +1030,13 @@ namespace {
                                      1000,
                                      [](int value) { return fmt::format("{:.1f}", value / 10.f); }});
             m_menuEntries.back().acceleration = 5;
-            m_menuEntries.push_back(
-                {MenuIndent::OptionIndent, "Contrast", MenuEntryType::Slider, SettingContrast, 4000, 6000, [](int value) {
-                     return fmt::format("{:.2f}", value / 100.f);
-                 }});
+            m_menuEntries.push_back({MenuIndent::OptionIndent,
+                                     "Contrast",
+                                     MenuEntryType::Slider,
+                                     SettingContrast,
+                                     4000,
+                                     6000,
+                                     [](int value) { return fmt::format("{:.2f}", value / 100.f); }});
             m_menuEntries.back().acceleration = 20;
 
             m_menuEntries.push_back({MenuIndent::OptionIndent,
@@ -1095,9 +1098,75 @@ namespace {
                  }});
             m_menuEntries.back().acceleration = 5;
             m_menuEntries.push_back(
-                {MenuIndent::OptionIndent, "Field of view", MenuEntryType::Slider, SettingFOV, 50, 150, [&](int value) {
-                     return fmt::format("{}% ({:.1f} deg)", value, m_stats.totalFov * 180.0f / M_PI);
+                {MenuIndent::OptionIndent, "FOV Up", MenuEntryType::Slider, "fov_up", 50, 200, [&](int value) {
+                     return fmt::format("{}% ({:.1f}/{:.1f} deg)",
+                                        value,
+                                        m_stats.fovL[0] * 180.0f / M_PI,
+                                        m_stats.fovR[0] * 180.0f / M_PI);
                  }});
+            m_menuEntries.push_back(
+                {MenuIndent::OptionIndent, "FOV Down", MenuEntryType::Slider, "fov_down", 50, 200, [&](int value) {
+                     return fmt::format("{}% ({:.1f}/{:.1f} deg)",
+                                        value,
+                                        m_stats.fovL[1] * 180.0f / M_PI,
+                                        m_stats.fovR[1] * 180.0f / M_PI);
+                 }});
+            m_menuEntries.push_back(
+                {MenuIndent::OptionIndent, "FOV L/Left", MenuEntryType::Slider, "fov_l_l", 50, 200, [&](int value) {
+                     return fmt::format("{}% ({:.1f} deg)", value, m_stats.fovL[2] * 180.0f / M_PI);
+                 }});
+            m_menuEntries.push_back(
+                {MenuIndent::OptionIndent, "FOV L/Right", MenuEntryType::Slider, "fov_l_r", 50, 200, [&](int value) {
+                     return fmt::format("{}% ({:.1f} deg)", value, m_stats.fovL[3] * 180.0f / M_PI);
+                 }});
+            m_menuEntries.push_back(
+                {MenuIndent::OptionIndent, "FOV R/Left", MenuEntryType::Slider, "fov_r_l", 50, 200, [&](int value) {
+                     return fmt::format("{}% ({:.1f} deg)", value, m_stats.fovR[2] * 180.0f / M_PI);
+                 }});
+            m_menuEntries.push_back(
+                {MenuIndent::OptionIndent, "FOV R/Right", MenuEntryType::Slider, "fov_r_r", 50, 200, [&](int value) {
+                     return fmt::format("{}% ({:.1f} deg)", value, m_stats.fovR[3] * 180.0f / M_PI);
+                 }});
+            m_menuEntries.push_back({MenuIndent::OptionIndent,
+                                     "Override FOV",
+                                     MenuEntryType::Choice,
+                                     "fov_override_thread",
+                                     0,
+                                     2,
+                                     [&](int value) {
+                                         const std::string_view labels[] = {"Both", "Thread1", "Thread2"};
+                                         return std::string(labels[value]);
+                                     }});
+            m_menuEntries.push_back({MenuIndent::OptionIndent,
+                                     "Restore EndFrame FOV",
+                                     MenuEntryType::Choice,
+                                     "fov_restore",
+                                     0,
+                                     1,
+                                     [&](int value) {
+                                         const std::string_view labels[] = {"Off", "On"};
+                                         return std::string(labels[value]);
+                                     }});
+            m_menuEntries.push_back({MenuIndent::OptionIndent,
+                                     "Swap Locate L/R",
+                                     MenuEntryType::Choice,
+                                     "eye_locate_swap",
+                                     0,
+                                     3,
+                                     [&](int value) {
+                                         const std::string_view labels[] = {"Off", "Thread1", "Thread2", "Both"};
+                                         return std::string(labels[value]);
+                                     }});
+            m_menuEntries.push_back({MenuIndent::OptionIndent,
+                                     "Swap EndFrame L/R",
+                                     MenuEntryType::Choice,
+                                     "eye_endframe_swap",
+                                     0,
+                                     1,
+                                     [&](int value) {
+                                         const std::string_view labels[] = {"Off", "On"};
+                                         return std::string(labels[value]);
+                                     }});
 
             // Must be kept last.
             appearanceTab.finalize();
