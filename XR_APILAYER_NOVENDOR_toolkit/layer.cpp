@@ -374,7 +374,8 @@ namespace {
                     m_postProcessor =
                         graphics::CreateImageProcessor(m_configManager, m_graphicsDevice, "postprocess.hlsl");
 
-                    m_configManager->setDefault("disable_frame_analyzer", 0);
+                    // We disable the frame analyzer with OpenComposite, because we cannot identify eyes anyway.
+                    m_configManager->setDefault("disable_frame_analyzer", m_isOpenComposite);
                     if (!m_configManager->getValue("disable_frame_analyzer")) {
                         m_frameAnalyzer = graphics::CreateFrameAnalyzer(m_configManager, m_graphicsDevice);
                     }

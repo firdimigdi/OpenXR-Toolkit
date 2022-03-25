@@ -97,15 +97,13 @@ namespace {
 
                 // Switch to right eye now.
                 m_eyePrediction = Eye::Right;
+            }
+            else if (m_eyeSwapchainImages[1].find(nativePtr) != m_eyeSwapchainImages[1].cend()) {
+                DebugLog("Detected copy-out to right eye\n");
 
                 // We are confident our prediction is accurate.
                 m_shouldPredictEye = true;
             }
-#ifdef _DEBUG
-            else if (m_eyeSwapchainImages[1].find(nativePtr) != m_eyeSwapchainImages[1].cend()) {
-                DebugLog("Detected copy-out to right eye\n");
-            }
-#endif
         }
 
         std::optional<Eye> getEyeHint() const override {

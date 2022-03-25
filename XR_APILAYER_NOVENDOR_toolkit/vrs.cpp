@@ -168,6 +168,83 @@ namespace {
             }
         }
 
+        void getGenericMaskForResolution(uint32_t width,
+                                         uint32_t height,
+                                         ComPtr<ID3D11NvShadingRateResourceView>& srrv) {
+            const auto widthTiled = Align(width, m_tileSize) / m_tileSize;
+            const auto heightTiled = Align(height, m_tileSize) / m_tileSize;
+
+            const uint32_t widthHeight = (widthTiled << 16) | heightTiled;
+
+            const auto it = m_d3d11Resources.shadingRateResourceViewGenericPerResolution.find(widthHeight);
+            if (it != m_d3d11Resources.shadingRateResourceViewGenericPerResolution.end()) {
+                srrv = it->second;
+                return;
+            }
+
+            Log("Creating new VRS mask for resolution %ux%u\n", width, height);
+
+            XrSwapchainCreateInfo info;
+            ZeroMemory(&info, sizeof(info));
+            info.width = widthTiled;
+            info.height = heightTiled;
+            info.format = (int64_t)DXGI_FORMAT_R8_UINT;
+            info.arraySize = 1;
+            info.mipCount = 1;
+            info.sampleCount = 1;
+            info.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+
+            const auto texture = m_device->createTexture(info, "VRS Generic TEX2D");
+
+            {
+                std::vector<uint8_t> genericPattern;
+                int innerRadius, outerRadius;
+                if (m_configManager->getEnumValue<VariableShadingRateType>(config::SettingVRS) ==
+                    VariableShadingRateType::Preset) {
+                    std::tie(innerRadius, outerRadius) = getRadiusForPattern(
+                        m_configManager->getEnumValue<VariableShadingRatePattern>(SettingVRSPattern));
+                } else {
+                    innerRadius = m_configManager->getValue(SettingVRSInnerRadius);
+                    outerRadius = m_configManager->getValue(SettingVRSOuterRadius);
+                }
+
+                const auto yOffset = static_cast<int>(m_configManager->getValue(SettingVRSYOffset) * (height / 200.f));
+                const float semiMajorFactor = m_configManager->getValue(SettingVRSXScale) / 100.f;
+
+                const int rowPitch = Align(width, m_tileSize) / m_tileSize;
+                const int rowPitchAligned = Align(rowPitch, m_device->getTextureAlignmentConstraint());
+
+                generateFoveationPattern(genericPattern,
+                                         rowPitchAligned,
+                                         width / 2, // Cannot apply xOffset.
+                                         (height / 2) + yOffset,
+                                         innerRadius / 100.f,
+                                         outerRadius / 100.f,
+                                         semiMajorFactor,
+                                         width,
+                                         height);
+
+                texture->uploadData(genericPattern.data(), rowPitchAligned);
+            }
+
+            NV_D3D11_SHADING_RATE_RESOURCE_VIEW_DESC desc;
+            ZeroMemory(&desc, sizeof(desc));
+            desc.version = NV_D3D11_SHADING_RATE_RESOURCE_VIEW_DESC_VER;
+            desc.Format = DXGI_FORMAT_R8_UINT;
+            desc.ViewDimension = NV_SRRV_DIMENSION_TEXTURE2D;
+            desc.Texture2D.MipSlice = 0;
+
+            ComPtr<ID3D11NvShadingRateResourceView> shadingRateResourceView;
+            CHECK_NVCMD(NvAPI_D3D11_CreateShadingRateResourceView(
+                m_device->getNative<D3D11>(), texture->getNative<D3D11>(), &desc, set(shadingRateResourceView)));
+
+            m_shadingRateMaskGenericPerResolution.insert_or_assign(widthHeight, texture);
+            m_d3d11Resources.shadingRateResourceViewGenericPerResolution.insert_or_assign(widthHeight,
+                                                                                          shadingRateResourceView);
+
+            srrv = shadingRateResourceView;
+        }
+
         ~VariableRateShader() override {
             disable();
 
@@ -177,6 +254,9 @@ namespace {
             }
             m_d3d11Resources.shadingRateResourceViewGeneric.Detach();
             m_d3d11Resources.shadingRateResourceViewVPRT.Detach();
+            for (auto& res : m_d3d11Resources.shadingRateResourceViewGenericPerResolution) {
+                res.second.Detach();
+            }
         }
 
         void update() override {
@@ -218,15 +298,17 @@ namespace {
                 middleRate = std::min((int)m_maxDownsamplePow2, middleRate);
                 outerRate = std::min((int)m_maxDownsamplePow2, outerRate);
 
-                uint8_t innerValue = 0, middleValue = 1, outerValue = 2;
                 if (m_device->getApi() == Api::D3D11) {
                     m_d3d11Resources.innerShadingRate = getNVAPIShadingRate(innerRate);
                     m_d3d11Resources.middleShadingRate = getNVAPIShadingRate(middleRate);
                     m_d3d11Resources.outerShadingRate = getNVAPIShadingRate(outerRate);
+                    m_innerValue = 0;
+                    m_middleValue = 1;
+                    m_outerValue = 2;
                 } else if (m_device->getApi() == Api::D3D12) {
-                    innerValue = getD3D12ShadingRate(innerRate);
-                    middleValue = getD3D12ShadingRate(middleRate);
-                    outerValue = getD3D12ShadingRate(outerRate);
+                    m_innerValue = getD3D12ShadingRate(innerRate);
+                    m_middleValue = getD3D12ShadingRate(middleRate);
+                    m_outerValue = getD3D12ShadingRate(outerRate);
                 } else {
                     throw std::runtime_error("Unsupported graphics runtime");
                 }
@@ -270,10 +352,7 @@ namespace {
                                              m_projCenterY[0] + yOffset,
                                              innerRadius / 100.f,
                                              outerRadius / 100.f,
-                                             semiMajorFactor,
-                                             innerValue,
-                                             middleValue,
-                                             outerValue);
+                                             semiMajorFactor);
 
                     std::vector<uint8_t> rightPattern;
                     generateFoveationPattern(rightPattern,
@@ -282,10 +361,7 @@ namespace {
                                              m_projCenterY[1] + yOffset,
                                              innerRadius / 100.f,
                                              outerRadius / 100.f,
-                                             semiMajorFactor,
-                                             innerValue,
-                                             middleValue,
-                                             outerValue);
+                                             semiMajorFactor);
 
                     std::vector<uint8_t> genericPattern;
                     generateFoveationPattern(genericPattern,
@@ -294,10 +370,7 @@ namespace {
                                              (m_targetHeight / 2) + yOffset,
                                              innerRadius / 100.f,
                                              outerRadius / 100.f,
-                                             semiMajorFactor,
-                                             innerValue,
-                                             middleValue,
-                                             outerValue);
+                                             semiMajorFactor);
 
                     m_shadingRateMask[0]->uploadData(leftPattern.data(), rowPitchAligned);
                     m_shadingRateMask[1]->uploadData(rightPattern.data(), rowPitchAligned);
@@ -325,6 +398,9 @@ namespace {
                             context->ResourceBarrier(ARRAYSIZE(barriers), barriers);
                         }
                     }
+
+                    m_d3d11Resources.shadingRateResourceViewGenericPerResolution.clear();
+                    m_shadingRateMaskGenericPerResolution.clear();
 
                     m_hasProjCenterChanged = false;
                 }
@@ -359,9 +435,14 @@ namespace {
                 desc.pViewports = viewports;
                 CHECK_NVCMD(NvAPI_D3D11_RSSetViewportsPixelShadingRates(context->getNative<D3D11>(), &desc));
 
+                ComPtr<ID3D11NvShadingRateResourceView> srrv;
+                if (info.arraySize == 1 && !eyeHint.has_value()) {
+                    getGenericMaskForResolution(info.width, info.height, srrv);
+                }
+
                 auto& mask = info.arraySize == 2   ? m_d3d11Resources.shadingRateResourceViewVPRT
                              : eyeHint.has_value() ? m_d3d11Resources.shadingRateResourceView[(uint32_t)eyeHint.value()]
-                                                   : m_d3d11Resources.shadingRateResourceViewGeneric;
+                                                   : srrv;
 
                 CHECK_NVCMD(NvAPI_D3D11_RSSetShadingRateResourceView(context->getNative<D3D11>(), get(mask)));
 
@@ -482,7 +563,7 @@ namespace {
 
                     renderTarget->saveToFile(
                         (localAppData / "screenshots" /
-                         fmt::format("vrs_{}_{}_{}_pre.dds",
+                         fmt::format("vrs_{}_{}_{}_pre.png",
                                      m_captureID,
                                      m_captureFileIndex,
                                      info.arraySize == 2   ? "dual"
@@ -497,7 +578,7 @@ namespace {
 
                     m_currentRenderTarget->saveToFile(
                         (localAppData / "screenshots" /
-                         fmt::format("vrs_{}_{}_{}_post.dds",
+                         fmt::format("vrs_{}_{}_{}_post.png",
                                      m_captureID,
                                      m_captureFileIndex++,
                                      info.arraySize == 2 ? "dual"
@@ -520,15 +601,21 @@ namespace {
                                       float innerRadius,
                                       float outerRadius,
                                       float semiMinorFactor,
-                                      uint8_t innerValue,
-                                      uint8_t middleValue,
-                                      uint8_t outerValue) {
-            const auto width = Align(m_targetWidth, m_tileSize) / m_tileSize;
-            const auto height = Align(m_targetHeight, m_tileSize) / m_tileSize;
+                                      uint32_t targetWidth = 0,
+                                      uint32_t targetHeight = 0) {
+            if (targetWidth == 0) {
+                targetWidth = m_targetWidth;
+            }
+            if (targetHeight == 0) {
+                targetHeight = m_targetHeight;
+            }
+
+            const auto width = Align(targetWidth, m_tileSize) / m_tileSize;
+            const auto height = Align(targetHeight, m_tileSize) / m_tileSize;
 
             pattern.resize(rowPitch * height);
-            const int centerX = std::clamp(projCenterX, 0, (int)m_targetWidth) / m_tileSize;
-            const int centerY = std::clamp(projCenterY, 0, (int)m_targetHeight) / m_tileSize;
+            const int centerX = std::clamp(projCenterX, 0, (int)targetWidth) / m_tileSize;
+            const int centerY = std::clamp(projCenterY, 0, (int)targetHeight) / m_tileSize;
 
             const int innerSemiMinor = (int)(height * innerRadius / 2);
             const int innerSemiMajor = (int)(semiMinorFactor * innerSemiMinor);
@@ -543,11 +630,11 @@ namespace {
 
             for (uint32_t y = 0; y < height; y++) {
                 for (uint32_t x = 0; x < width; x++) {
-                    uint8_t rate = outerValue;
+                    uint8_t rate = m_outerValue;
                     if (isInsideEllipsis(centerX, centerY, x, y, innerSemiMajor, innerSemiMinor) < 1) {
-                        rate = innerValue;
+                        rate = m_innerValue;
                     } else if (isInsideEllipsis(centerX, centerY, x, y, outerSemiMajor, outerSemiMinor) < 1) {
-                        rate = middleValue;
+                        rate = m_middleValue;
                     }
 
                     pattern[y * rowPitch + x] = rate;
@@ -581,6 +668,10 @@ namespace {
         const uint32_t m_targetHeight;
         const float m_targetAspectRatio;
 
+        int m_innerValue{0};
+        int m_middleValue{0};
+        int m_outerValue{0};
+
         int m_projCenterX[ViewCount];
         int m_projCenterY[ViewCount];
         bool m_hasProjCenterChanged{false};
@@ -610,11 +701,13 @@ namespace {
             ComPtr<ID3D11NvShadingRateResourceView> shadingRateResourceView[ViewCount];
             ComPtr<ID3D11NvShadingRateResourceView> shadingRateResourceViewGeneric;
             ComPtr<ID3D11NvShadingRateResourceView> shadingRateResourceViewVPRT;
+            std::map<uint32_t, ComPtr<ID3D11NvShadingRateResourceView>> shadingRateResourceViewGenericPerResolution;
         } m_d3d11Resources;
 
         std::shared_ptr<ITexture> m_shadingRateMask[ViewCount];
         std::shared_ptr<ITexture> m_shadingRateMaskGeneric;
         std::shared_ptr<ITexture> m_shadingRateMaskVPRT;
+        std::map<uint32_t, std::shared_ptr<ITexture>> m_shadingRateMaskGenericPerResolution;
 
 #ifdef _DEBUG
         bool m_isCapturing{false};
