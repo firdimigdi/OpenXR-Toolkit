@@ -133,6 +133,20 @@ namespace {
             graphics::UnhookForD3D11DebugLayer();
         }
 
+        XrResult xrGetInstanceProcAddr(XrInstance instance, const char* name, PFN_xrVoidFunction* function) override {
+            const std::string apiName(name);
+            XrResult result;
+
+            if (apiName == "xrGetVisibilityMaskKHR") {
+                result = m_xrGetInstanceProcAddr(instance, name, function);
+                m_xrGetVisibilityMaskKHR = reinterpret_cast<PFN_xrGetVisibilityMaskKHR>(*function);
+                *function = reinterpret_cast<PFN_xrVoidFunction>(_xrGetVisibilityMaskKHR);
+            } else {
+                result = OpenXrApi::xrGetInstanceProcAddr(instance, name, function);
+            }
+            return result;
+        }
+
         XrResult xrGetSystem(XrInstance instance, const XrSystemGetInfo* getInfo, XrSystemId* systemId) override {
             const XrResult result = OpenXrApi::xrGetSystem(instance, getInfo, systemId);
             if (XR_SUCCEEDED(result) && getInfo->formFactor == XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY &&
@@ -224,6 +238,7 @@ namespace {
                 m_configManager->setDefault("fov_r_r", 100);
                 m_configManager->setDefault("fov_override_thread", 0); // Both
                 m_configManager->setDefault("fov_restore", 0);
+                m_configManager->setDefault("eye_mask_swap", 0);
                 m_configManager->setDefault("eye_locate_swap", 0);
                 m_configManager->setDefault("eye_endframe_swap", 0);
 
@@ -914,6 +929,24 @@ namespace {
                 return XR_SUCCESS;
             }
 
+            if (m_configManager->hasChanged("eye_mask_swap") && m_vrSession != XR_NULL_HANDLE) {
+                XrEventDataVisibilityMaskChangedKHR* const buffer =
+                    reinterpret_cast<XrEventDataVisibilityMaskChangedKHR*>(eventData);
+                buffer->type = XR_TYPE_VISIBILITY_MASK_KHR;
+                buffer->next = nullptr;
+                buffer->session = m_vrSession;
+                buffer->viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+                buffer->viewIndex = m_visibilityMaskEventIndex++;
+                Log("Send XrEventDataVisibilityMaskChangedKHR event for view %u\n", buffer->viewIndex);
+
+                if (m_visibilityMaskEventIndex == utilities::ViewCount) {
+                    (void)m_configManager->getValue("eye_mask_swap");
+                    m_visibilityMaskEventIndex = 0;
+                }
+
+                return XR_SUCCESS;
+            }
+
             return OpenXrApi::xrPollEvent(instance, eventData);
         }
 
@@ -930,6 +963,21 @@ namespace {
             }
 
             return OpenXrApi::xrGetCurrentInteractionProfile(session, topLevelUserPath, interactionProfile);
+        }
+
+        XrResult xrGetVisibilityMaskKHR(XrSession session,
+                                        XrViewConfigurationType viewConfigurationType,
+                                        uint32_t viewIndex,
+                                        XrVisibilityMaskTypeKHR visibilityMaskType,
+                                        XrVisibilityMaskKHR* visibilityMask) {
+            if (m_configManager->peekValue("eye_mask_swap")) {
+                viewIndex ^= 1;
+            }
+
+            const XrResult result =
+                m_xrGetVisibilityMaskKHR(session, viewConfigurationType, viewIndex, visibilityMaskType, visibilityMask);
+
+            return result;
         }
 
         XrResult xrLocateViews(XrSession session,
@@ -1737,6 +1785,7 @@ namespace {
         DWORD m_waitFrameTid{0};
         DWORD m_beginFrameTid{0};
         bool m_sendInterationProfileEvent{false};
+        uint32_t m_visibilityMaskEventIndex{0};
         XrSpace m_viewSpace{XR_NULL_HANDLE};
         bool m_needCalibrateEyeProjections{true};
         XrView m_posesForFrame[utilities::ViewCount];
@@ -1780,6 +1829,29 @@ namespace {
 
         // TODO: These should be auto-generated and accessible via OpenXrApi.
         PFN_xrConvertWin32PerformanceCounterToTimeKHR xrConvertWin32PerformanceCounterToTimeKHR{nullptr};
+        PFN_xrGetVisibilityMaskKHR m_xrGetVisibilityMaskKHR{nullptr};
+
+        static XrResult _xrGetVisibilityMaskKHR(XrSession session,
+                                                XrViewConfigurationType viewConfigurationType,
+                                                uint32_t viewIndex,
+                                                XrVisibilityMaskTypeKHR visibilityMaskType,
+                                                XrVisibilityMaskKHR* visibilityMask) {
+            DebugLog("--> xrGetVisibilityMaskKHR\n");
+
+            XrResult result;
+            try {
+                result = dynamic_cast<OpenXrLayer*>(GetInstance())
+                             ->xrGetVisibilityMaskKHR(
+                                 session, viewConfigurationType, viewIndex, visibilityMaskType, visibilityMask);
+            } catch (std::exception& exc) {
+                Log("%s\n", exc.what());
+                result = XR_ERROR_RUNTIME_FAILURE;
+            }
+
+            DebugLog("<-- xrGetVisibilityMaskKHR %d\n", result);
+
+            return result;
+        }
     };
 
     std::unique_ptr<OpenXrLayer> g_instance = nullptr;
