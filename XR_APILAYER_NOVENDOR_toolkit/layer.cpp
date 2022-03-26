@@ -241,6 +241,10 @@ namespace {
                 m_configManager->setDefault("eye_mask_swap", 0);
                 m_configManager->setDefault("eye_locate_swap", 0);
                 m_configManager->setDefault("eye_endframe_swap", 0);
+                m_configManager->setDefault("eye_l_angle_swap", 0);
+                m_configManager->setDefault("eye_r_angle_swap", 0);
+                m_configManager->setDefault("eye_l_mask_flip", 0);
+                m_configManager->setDefault("eye_r_mask_flip", 0);
 
                 // Workaround: the first versions of the toolkit used a different representation for the world scale.
                 // Migrate the value upon first run.
@@ -977,6 +981,14 @@ namespace {
             const XrResult result =
                 m_xrGetVisibilityMaskKHR(session, viewConfigurationType, viewIndex, visibilityMaskType, visibilityMask);
 
+            if (visibilityMask->vertexCapacityInput &&
+                ((viewIndex == 0 && m_configManager->getValue("eye_l_mask_flip")) ||
+                 (viewIndex == 1 && m_configManager->getValue("eye_r_mask_flip")))) {
+                for (uint32_t i = 0; i < visibilityMask->vertexCountOutput; i++) {
+                    visibilityMask->vertices[i].x = -visibilityMask->vertices[i].x;
+                }
+            }
+
             return result;
         }
 
@@ -1126,6 +1138,13 @@ namespace {
 
                 if (needSwap) {
                     std::swap(views[0], views[1]);
+                }
+
+                if (m_configManager->getValue("eye_l_angle_swap")) {
+                    std::swap(views[0].fov.angleLeft, views[0].fov.angleRight);
+                }
+                if (m_configManager->getValue("eye_r_angle_swap")) {
+                    std::swap(views[1].fov.angleLeft, views[1].fov.angleRight);
                 }
             }
 

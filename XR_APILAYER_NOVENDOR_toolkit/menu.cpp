@@ -1177,6 +1177,46 @@ namespace {
                                          const std::string_view labels[] = {"Off", "On"};
                                          return std::string(labels[value]);
                                      }});
+            m_menuEntries.push_back({MenuIndent::OptionIndent,
+                                     "Flip L/angle",
+                                     MenuEntryType::Choice,
+                                     "eye_l_angle_swap",
+                                     0,
+                                     1,
+                                     [&](int value) {
+                                         const std::string_view labels[] = {"Off", "On"};
+                                         return std::string(labels[value]);
+                                     }});
+            m_menuEntries.push_back({MenuIndent::OptionIndent,
+                                     "Flip R/angle",
+                                     MenuEntryType::Choice,
+                                     "eye_r_angle_swap",
+                                     0,
+                                     1,
+                                     [&](int value) {
+                                         const std::string_view labels[] = {"Off", "On"};
+                                         return std::string(labels[value]);
+                                     }});
+            m_menuEntries.push_back({MenuIndent::OptionIndent,
+                                     "Flip L/mask",
+                                     MenuEntryType::Choice,
+                                     "eye_l_mask_flip",
+                                     0,
+                                     1,
+                                     [&](int value) {
+                                         const std::string_view labels[] = {"Off", "On"};
+                                         return std::string(labels[value]);
+                                     }});
+            m_menuEntries.push_back({MenuIndent::OptionIndent,
+                                     "Flip R/mask",
+                                     MenuEntryType::Choice,
+                                     "eye_r_mask_flip",
+                                     0,
+                                     1,
+                                     [&](int value) {
+                                         const std::string_view labels[] = {"Off", "On"};
+                                         return std::string(labels[value]);
+                                     }});
 
             // Must be kept last.
             appearanceTab.finalize();
