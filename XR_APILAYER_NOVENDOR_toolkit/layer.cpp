@@ -222,6 +222,7 @@ namespace {
                 m_configManager->setDefault(config::SettingSaturationGreen, 500);
                 m_configManager->setDefault(config::SettingSaturationBlue, 500);
                 m_configManager->setEnumDefault(config::SettingScreenshotFileFormat, config::ScreenshotFileFormat::PNG);
+                m_configManager->setDefault("vrs_capture", 0);
 
                 // Workaround: the first versions of the toolkit used a different representation for the world scale.
                 // Migrate the value upon first run.
@@ -1311,9 +1312,7 @@ namespace {
             }
             if (m_variableRateShader) {
                 m_variableRateShader->disable();
-#ifdef _DEBUG
                 m_variableRateShader->stopCapture();
-#endif
             }
 
             // TODO: Ensure restoreContext() even on error.
@@ -1612,11 +1611,9 @@ namespace {
                 // review the command queues/lists and context flush
                 takeScreenshot(textureForOverlay[0]);
 
-#ifdef _DEBUG
-                if (m_variableRateShader) {
+                if (m_variableRateShader && m_configManager->getValue("vrs_capture")) {
                     m_variableRateShader->startCapture();
                 }
-#endif
             }
 
             m_graphicsDevice->restoreContext();

@@ -2038,7 +2038,7 @@ namespace {
             g_original_ID3D11DeviceContext_OMSetRenderTargets(
                 Context, NumViews, ppRenderTargetViews, pDepthStencilView);
 
-            TraceWriteStop(local, "ID3D11DeviceContext_OMSetRenderTargets");
+            TraceLoggingWriteStop(local, "ID3D11DeviceContext_OMSetRenderTargets");
         }
 
         typedef void (*PFN_ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews)(
@@ -2082,7 +2082,7 @@ namespace {
                                                                                      ppUnorderedAccessViews,
                                                                                      pUAVInitialCounts);
 
-            TraceWriteStop(local, "ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews");
+            TraceLoggingWriteStop(local, "ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews");
         }
 
         typedef void (*PFN_ID3D11DeviceContext_CopyResource)(ID3D11DeviceContext*, ID3D11Resource*, ID3D11Resource*);
@@ -2100,7 +2100,7 @@ namespace {
             assert(g_original_ID3D11DeviceContext_CopyResource);
             g_original_ID3D11DeviceContext_CopyResource(Context, pDstResource, pSrcResource);
 
-            TraceWriteStop(local, "ID3D11DeviceContext_CopyResource");
+            TraceLoggingWriteStop(local, "ID3D11DeviceContext_CopyResource");
         }
 
         typedef void (*PFN_ID3D11DeviceContext_CopySubresourceRegion)(
@@ -2132,7 +2132,7 @@ namespace {
             g_original_ID3D11DeviceContext_CopySubresourceRegion(
                 Context, pDstResource, DstSubresource, DstX, DstY, DstZ, pSrcResource, SrcSubresource, pSrcBox);
 
-            TraceWriteStop(local, "ID3D11DeviceContext_CopySubresourceRegion");
+            TraceLoggingWriteStop(local, "ID3D11DeviceContext_CopySubresourceRegion");
         }
 
         typedef void (*PFN_ID3D11DeviceContext_PSSetSamplers)(ID3D11DeviceContext*,
@@ -2163,7 +2163,7 @@ namespace {
             assert(g_original_ID3D11DeviceContext_PSSetSamplers);
             g_original_ID3D11DeviceContext_PSSetSamplers(Context, StartSlot, NumSamplers, updatedSamplers);
 
-            TraceWriteStop(local, "ID3D11DeviceContext_PSSetSamplers");
+            TraceLoggingWriteStop(local, "ID3D11DeviceContext_PSSetSamplers");
         }
     };
 
