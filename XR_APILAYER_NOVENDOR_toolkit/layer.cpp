@@ -375,10 +375,15 @@ namespace {
                     m_postProcessor =
                         graphics::CreateImageProcessor(m_configManager, m_graphicsDevice, "postprocess.hlsl");
 
-                    // We disable the frame analyzer with OpenComposite, because we cannot identify eyes anyway.
-                    m_configManager->setDefault("disable_frame_analyzer", m_isOpenComposite);
+                    m_configManager->setDefault("disable_frame_analyzer", 0);
                     if (!m_configManager->getValue("disable_frame_analyzer")) {
-                        m_frameAnalyzer = graphics::CreateFrameAnalyzer(m_configManager, m_graphicsDevice);
+                        graphics::FrameAnalyzerHeuristic heuristic = graphics::FrameAnalyzerHeuristic::Unknown;
+                        if (m_applicationName == "OpenComposite_DCS") {
+                            heuristic = graphics::FrameAnalyzerHeuristic::MultipleDepthBuffers;
+                        }
+
+                        m_frameAnalyzer = graphics::CreateFrameAnalyzer(
+                            m_configManager, m_graphicsDevice, m_displayWidth, m_displayHeight, heuristic);
                     }
                     m_variableRateShader =
                         graphics::CreateVariableRateShader(m_configManager, m_graphicsDevice, inputWidth, inputHeight);
@@ -419,6 +424,31 @@ namespace {
                             m_variableRateShader->onUnsetRenderTarget(context);
                         }
                     });
+                    m_graphicsDevice->registerSetDepthStencilEvent(
+                        [&](std::shared_ptr<graphics::IContext> context,
+                            std::shared_ptr<graphics::ITexture> depthStencil) {
+                            if (!m_isInFrame) {
+                                return;
+                            }
+
+                            if (m_frameAnalyzer) {
+                                m_frameAnalyzer->onSetDepthStencil(depthStencil);
+                                const auto& eyeHint = m_frameAnalyzer->getEyeHint();
+                                if (eyeHint.has_value()) {
+                                    m_stats.hasColorBuffer[(int)eyeHint.value()] = true;
+                                }
+                            }
+                        });
+                    m_graphicsDevice->registerUnsetDepthStencilEvent(
+                        [&](std::shared_ptr<graphics::IContext> context, bool isDepthInverted) {
+                            if (!m_isInFrame) {
+                                return;
+                            }
+
+                            if (m_frameAnalyzer) {
+                                m_frameAnalyzer->onUnsetDepthStencil(isDepthInverted);
+                            }
+                        });
                     m_graphicsDevice->registerCopyTextureEvent([&](std::shared_ptr<graphics::IContext> context,
                                                                    std::shared_ptr<graphics::ITexture> source,
                                                                    std::shared_ptr<graphics::ITexture> destination,

@@ -212,6 +212,8 @@ namespace toolkit {
 
         enum class TextStyle { Normal, Bold };
 
+        enum class FrameAnalyzerHeuristic { Unknown, ForwardRender, DeferredCopy, MultipleDepthBuffers };
+
         struct IDevice;
         struct ITexture;
 
@@ -595,7 +597,9 @@ namespace toolkit {
 
             virtual void onSetRenderTarget(std::shared_ptr<IContext> context,
                                            std::shared_ptr<ITexture> renderTarget) = 0;
-            virtual void onUnsetRenderTarget(std::shared_ptr<graphics::IContext> context) = 0;
+            virtual void onUnsetRenderTarget(std::shared_ptr<IContext> context) = 0;
+            virtual void onSetDepthStencil(std::shared_ptr<ITexture> depthStencil) = 0;
+            virtual void onUnsetDepthStencil(bool isDepthInverted) = 0;
 
             virtual void onCopyTexture(std::shared_ptr<ITexture> source,
                                        std::shared_ptr<ITexture> destination,
