@@ -31,9 +31,13 @@ namespace companion
         {
             this.components = new System.ComponentModel.Container();
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle1 = new System.Windows.Forms.DataGridViewCellStyle();
+            System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle7 = new System.Windows.Forms.DataGridViewCellStyle();
+            System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle8 = new System.Windows.Forms.DataGridViewCellStyle();
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle2 = new System.Windows.Forms.DataGridViewCellStyle();
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle3 = new System.Windows.Forms.DataGridViewCellStyle();
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle4 = new System.Windows.Forms.DataGridViewCellStyle();
+            System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle5 = new System.Windows.Forms.DataGridViewCellStyle();
+            System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle6 = new System.Windows.Forms.DataGridViewCellStyle();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             this.layerActive = new System.Windows.Forms.Label();
             this.tooltip = new System.Windows.Forms.ToolTip(this.components);
@@ -75,6 +79,7 @@ namespace companion
             this.disable_interceptor = new System.Windows.Forms.DataGridViewCheckBoxColumn();
             this.module = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.app = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.reset = new System.Windows.Forms.DataGridViewButtonColumn();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.appGrid)).BeginInit();
             this.SuspendLayout();
@@ -422,9 +427,9 @@ namespace companion
             this.label14.AutoSize = true;
             this.label14.Location = new System.Drawing.Point(13, 491);
             this.label14.Name = "label14";
-            this.label14.Size = new System.Drawing.Size(267, 13);
+            this.label14.Size = new System.Drawing.Size(352, 13);
             this.label14.TabIndex = 26;
-            this.label14.Text = "Enable OpenXR Toolkit for each application selectively";
+            this.label14.Text = "Enable OpenXR Toolkit for each application selectively or reset its profile.";
             // 
             // screenshotEye
             // 
@@ -451,8 +456,8 @@ namespace companion
             dataGridViewCellStyle1.BackColor = System.Drawing.SystemColors.Control;
             dataGridViewCellStyle1.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(161)));
             dataGridViewCellStyle1.ForeColor = System.Drawing.SystemColors.WindowText;
-            dataGridViewCellStyle1.SelectionBackColor = System.Drawing.SystemColors.Highlight;
-            dataGridViewCellStyle1.SelectionForeColor = System.Drawing.SystemColors.HighlightText;
+            dataGridViewCellStyle1.SelectionBackColor = System.Drawing.SystemColors.Window;
+            dataGridViewCellStyle1.SelectionForeColor = System.Drawing.SystemColors.WindowText;
             dataGridViewCellStyle1.WrapMode = System.Windows.Forms.DataGridViewTriState.True;
             this.appGrid.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle1;
             this.appGrid.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
@@ -460,35 +465,59 @@ namespace companion
             this.bypass,
             this.disable_interceptor,
             this.module,
-            this.app});
+            this.app,
+            this.reset});
+            dataGridViewCellStyle7.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleLeft;
+            dataGridViewCellStyle7.BackColor = System.Drawing.SystemColors.Window;
+            dataGridViewCellStyle7.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(161)));
+            dataGridViewCellStyle7.ForeColor = System.Drawing.SystemColors.ControlText;
+            dataGridViewCellStyle7.SelectionBackColor = System.Drawing.SystemColors.Window;
+            dataGridViewCellStyle7.SelectionForeColor = System.Drawing.SystemColors.ControlText;
+            dataGridViewCellStyle7.WrapMode = System.Windows.Forms.DataGridViewTriState.False;
+            this.appGrid.DefaultCellStyle = dataGridViewCellStyle7;
             this.appGrid.Location = new System.Drawing.Point(10, 507);
             this.appGrid.MultiSelect = false;
             this.appGrid.Name = "appGrid";
+            dataGridViewCellStyle8.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleLeft;
+            dataGridViewCellStyle8.BackColor = System.Drawing.SystemColors.Control;
+            dataGridViewCellStyle8.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(161)));
+            dataGridViewCellStyle8.ForeColor = System.Drawing.SystemColors.WindowText;
+            dataGridViewCellStyle8.SelectionBackColor = System.Drawing.SystemColors.Window;
+            dataGridViewCellStyle8.SelectionForeColor = System.Drawing.SystemColors.WindowText;
+            dataGridViewCellStyle8.WrapMode = System.Windows.Forms.DataGridViewTriState.True;
+            this.appGrid.RowHeadersDefaultCellStyle = dataGridViewCellStyle8;
             this.appGrid.RowHeadersVisible = false;
-            this.appGrid.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
+            this.appGrid.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.CellSelect;
             this.appGrid.Size = new System.Drawing.Size(395, 101);
             this.appGrid.TabIndex = 37;
+            this.appGrid.CellContentClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.appGrid_CellContentClick);
             this.appGrid.CellEndEdit += new System.Windows.Forms.DataGridViewCellEventHandler(this.appGrid_CellEndEdit);
             this.appGrid.CellMouseUp += new System.Windows.Forms.DataGridViewCellMouseEventHandler(this.appGrid_CellMouseUp);
             // 
             // bypass
             // 
-            this.bypass.AutoSizeMode = System.Windows.Forms.DataGridViewAutoSizeColumnMode.Fill;
+            this.bypass.AutoSizeMode = System.Windows.Forms.DataGridViewAutoSizeColumnMode.None;
+            dataGridViewCellStyle2.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle2.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(161)));
+            dataGridViewCellStyle2.NullValue = false;
+            this.bypass.DefaultCellStyle = dataGridViewCellStyle2;
             this.bypass.FillWeight = 20F;
             this.bypass.HeaderText = "Enable";
-            this.bypass.MinimumWidth = 30;
+            this.bypass.MinimumWidth = 25;
             this.bypass.Name = "bypass";
             this.bypass.Resizable = System.Windows.Forms.DataGridViewTriState.False;
             this.bypass.ToolTipText = "Enable OpenXR Toolkit for the specific application";
+            this.bypass.Width = 50;
             // 
             // disable_interceptor
             // 
             this.disable_interceptor.AutoSizeMode = System.Windows.Forms.DataGridViewAutoSizeColumnMode.Fill;
-            dataGridViewCellStyle2.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle2.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(224)))), ((int)(((byte)(224)))), ((int)(((byte)(224)))));
-            dataGridViewCellStyle2.Font = new System.Drawing.Font("Microsoft Sans Serif", 6F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(161)));
-            dataGridViewCellStyle2.NullValue = false;
-            this.disable_interceptor.DefaultCellStyle = dataGridViewCellStyle2;
+            dataGridViewCellStyle3.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle3.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(224)))), ((int)(((byte)(224)))), ((int)(((byte)(224)))));
+            dataGridViewCellStyle3.Font = new System.Drawing.Font("Microsoft Sans Serif", 6F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(161)));
+            dataGridViewCellStyle3.NullValue = false;
+            dataGridViewCellStyle3.SelectionBackColor = System.Drawing.Color.FromArgb(((int)(((byte)(224)))), ((int)(((byte)(224)))), ((int)(((byte)(224)))));
+            this.disable_interceptor.DefaultCellStyle = dataGridViewCellStyle3;
             this.disable_interceptor.FillWeight = 18.27411F;
             this.disable_interceptor.HeaderText = "Intercept";
             this.disable_interceptor.MinimumWidth = 50;
@@ -500,9 +529,9 @@ namespace companion
             // module
             // 
             this.module.AutoSizeMode = System.Windows.Forms.DataGridViewAutoSizeColumnMode.Fill;
-            dataGridViewCellStyle3.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleLeft;
-            dataGridViewCellStyle3.WrapMode = System.Windows.Forms.DataGridViewTriState.False;
-            this.module.DefaultCellStyle = dataGridViewCellStyle3;
+            dataGridViewCellStyle4.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleLeft;
+            dataGridViewCellStyle4.WrapMode = System.Windows.Forms.DataGridViewTriState.False;
+            this.module.DefaultCellStyle = dataGridViewCellStyle4;
             this.module.FillWeight = 50F;
             this.module.HeaderText = "Executable";
             this.module.MinimumWidth = 50;
@@ -511,14 +540,31 @@ namespace companion
             // app
             // 
             this.app.AutoSizeMode = System.Windows.Forms.DataGridViewAutoSizeColumnMode.Fill;
-            dataGridViewCellStyle4.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleLeft;
-            dataGridViewCellStyle4.WrapMode = System.Windows.Forms.DataGridViewTriState.False;
-            this.app.DefaultCellStyle = dataGridViewCellStyle4;
+            dataGridViewCellStyle5.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleLeft;
+            dataGridViewCellStyle5.WrapMode = System.Windows.Forms.DataGridViewTriState.False;
+            this.app.DefaultCellStyle = dataGridViewCellStyle5;
             this.app.FillWeight = 50F;
             this.app.HeaderText = "Application";
             this.app.MinimumWidth = 100;
             this.app.Name = "app";
             this.app.ReadOnly = true;
+            // 
+            // reset
+            // 
+            this.reset.AutoSizeMode = System.Windows.Forms.DataGridViewAutoSizeColumnMode.None;
+            dataGridViewCellStyle6.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle6.Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(161)));
+            dataGridViewCellStyle6.SelectionBackColor = System.Drawing.Color.White;
+            dataGridViewCellStyle6.SelectionForeColor = System.Drawing.Color.Black;
+            this.reset.DefaultCellStyle = dataGridViewCellStyle6;
+            this.reset.HeaderText = "";
+            this.reset.MinimumWidth = 20;
+            this.reset.Name = "reset";
+            this.reset.ReadOnly = true;
+            this.reset.Text = "X";
+            this.reset.ToolTipText = "Reset profile to default values on next run";
+            this.reset.UseColumnTextForButtonValue = true;
+            this.reset.Width = 20;
             // 
             // Form1
             // 
@@ -613,6 +659,7 @@ namespace companion
         private System.Windows.Forms.DataGridViewCheckBoxColumn disable_interceptor;
         private System.Windows.Forms.DataGridViewTextBoxColumn module;
         private System.Windows.Forms.DataGridViewTextBoxColumn app;
+        private System.Windows.Forms.DataGridViewButtonColumn reset;
     }
 }
 

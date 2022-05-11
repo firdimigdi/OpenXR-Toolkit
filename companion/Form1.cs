@@ -102,6 +102,7 @@ namespace companion
                         displayName);
 
                     appGrid.Rows[index].Cells["disable_interceptor"].ToolTipText = appGrid.Columns["disable_interceptor"].ToolTipText;
+                    appGrid.Rows[index].Cells["reset"].ToolTipText = appGrid.Columns["reset"].ToolTipText;
                 }
             }
             catch (Exception)
@@ -728,5 +729,34 @@ namespace companion
             }
 
         }
+
+        private void appGrid_CellContentClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (appGrid.Columns[e.ColumnIndex] == appGrid.Columns["reset"])
+            {
+
+                var txtConfirm = String.Format("Do you want to delete the profile for {0} and have it reset to default values on next launch?", appGrid.Rows[e.RowIndex].Cells["app"].Value);
+
+                var confirmResult = MessageBox.Show(txtConfirm,
+                                        "Confirm Profile Reset",
+                                     MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+                if (confirmResult == DialogResult.Yes)
+                {
+                    try
+                    {
+
+                        Microsoft.Win32.Registry.CurrentUser.DeleteSubKey(RegPrefix + "\\" + appGrid.Rows[e.RowIndex].Cells["app"].Value);
+                        appGrid.Rows.Remove(appGrid.Rows[e.RowIndex]);
+                    }
+                    catch (Exception)
+                    {
+                        MessageBox.Show(this, "Could not delete entry from registry.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+
+                }
+            }
+        }
+
     }
 }

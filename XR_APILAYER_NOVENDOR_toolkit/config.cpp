@@ -93,9 +93,11 @@ namespace {
             ConfigValue newEntry;
             ConfigValue& entry = it != m_values.end() ? it->second : newEntry;
             entry.defaultValue = value;
+            
             if (it == m_values.end()) {
                 readValue(name, entry);
                 m_values.insert_or_assign(name, entry);
+                writeValue(name, entry);
             }
         }
 
