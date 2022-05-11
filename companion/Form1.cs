@@ -37,6 +37,7 @@ using System.Reflection;
 using System.Diagnostics;
 using System.Windows.Input;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 
 namespace companion
 {
@@ -93,13 +94,14 @@ namespace companion
                     var app = key.OpenSubKey(subKey);
                     var modulePath = (string)app.GetValue("module", null);
                     var displayName = subKey;
-                    if (modulePath != null)
-                    {
-                        displayName += " (" + Path.GetFileName(modulePath) + ")";
-                    }
 
-                    appList.Items.Add(displayName);
-                    appList.SetItemChecked(appList.Items.Count - 1, (int)app.GetValue("bypass", 0) == 0);
+                    var index = appGrid.Rows.Add(
+                        (int)app.GetValue("bypass", 0) == 0,
+                        (int)app.GetValue("disable_interceptor", 0) == 0,
+                        Path.GetFileName(modulePath),
+                        displayName);
+
+                    appGrid.Rows[index].Cells["disable_interceptor"].ToolTipText = appGrid.Columns["disable_interceptor"].ToolTipText;
                 }
             }
             catch (Exception)
@@ -698,18 +700,20 @@ namespace companion
             }
         }
 
-        private void appList_ItemCheck(object sender, ItemCheckEventArgs e)
+        private void appGrid_CellMouseUp(object sender, DataGridViewCellMouseEventArgs e)
         {
-            if (loading)
-            {
-                return;
-            }
-            var app = appList.Items[e.Index].ToString().Split('(')[0].Trim();
+            appGrid.EndEdit();
+        }
+
+        private void appGrid_CellEndEdit(object sender, DataGridViewCellEventArgs e)
+        {
             Microsoft.Win32.RegistryKey key = null;
+
             try
             {
-                key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RegPrefix + "\\" + app);
-                key.SetValue("bypass", e.NewValue == CheckState.Checked ? 0 : 1, Microsoft.Win32.RegistryValueKind.DWord);
+                key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RegPrefix + "\\" + appGrid.Rows[e.RowIndex].Cells["app"].Value);
+                key.SetValue("bypass", (bool)appGrid.Rows[e.RowIndex].Cells["bypass"].Value ? 0 : 1, Microsoft.Win32.RegistryValueKind.DWord);
+                key.SetValue("disable_interceptor", (bool)appGrid.Rows[e.RowIndex].Cells["disable_interceptor"].Value ? 0 : 1, Microsoft.Win32.RegistryValueKind.DWord);
             }
             catch (Exception)
             {
